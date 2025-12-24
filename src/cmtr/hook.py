@@ -44,7 +44,7 @@ def run_prepare_commit_msg(
     sha: str | None,
     repo_root: Path,
     config: Config,
-    api_key: str,
+    api_key: str | None,
 ) -> int:
     if _should_skip_source(source):
         return 0

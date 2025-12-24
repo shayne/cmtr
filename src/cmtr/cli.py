@@ -18,8 +18,13 @@ from .config import (
     set_global_value,
     unset_global_value,
 )
-from .core import collect_context, resolve_repo_root
-from .errors import CmtrError, OpenAIError, UserError
+from .core import collect_context, describe_auth_mode, resolve_repo_root, select_backend
+from .errors import CmtrError, CodexError, OpenAIError, UserError
+from .codex_client import (
+    DEFAULT_CODEX_MODEL,
+    codex_status,
+    generate_commit_message_with_codex,
+)
 from .hook import append_failure_comment, install_hook, run_prepare_commit_msg, uninstall_hook
 from .openai_client import generate_commit_message
 from .prompt import PromptContext, build_system_prompt, build_user_prompt
@@ -44,6 +49,9 @@ app = typer.Typer(
 
 config_app = typer.Typer(help="Manage cmtr configuration.")
 app.add_typer(config_app, name="config")
+
+auth_app = typer.Typer(help="Auth status and helpers.")
+app.add_typer(auth_app, name="auth")
 
 
 @app.callback(invoke_without_command=True)
@@ -100,6 +108,11 @@ def main(
     organization: str | None = typer.Option(
         None, "--organization", help="Override the OpenAI organization ID."
     ),
+    prefer_codex: bool | None = typer.Option(
+        None,
+        "--prefer-codex/--no-prefer-codex",
+        help="Prefer Codex CLI when available.",
+    ),
 ) -> None:
     ctx.obj = {
         "model": model,
@@ -113,6 +126,7 @@ def main(
         "text_verbosity": text_verbosity,
         "base_url": base_url,
         "organization": organization,
+        "prefer_codex": prefer_codex,
     }
 
     if ctx.invoked_subcommand is not None:
@@ -132,10 +146,14 @@ def main(
             console.print(f"Hook removed from {hook_path}")
             return
         config = load_config(repo_root, overrides=ctx.obj)
-        api_key = _require_api_key()
+        api_key = _get_api_key()
+        backend = select_backend(config, api_key)
         with StatusLine(console, "Analyzing staged changes...") as status:
             context = collect_context(repo_root, config)
-            status.update("Generating commit message...")
+            if backend == "codex":
+                status.update("Generating commit message (codex)...")
+            else:
+                status.update("Generating commit message...")
             prompt_context = PromptContext(
                 staged_files=context.staged_files,
                 name_status=context.name_status,
@@ -148,18 +166,31 @@ def main(
             )
             system_prompt = build_system_prompt()
             user_prompt = build_user_prompt(prompt_context)
-            message = generate_commit_message(
-                config=config,
-                api_key=api_key,
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-            )
+            if backend == "codex":
+                message = generate_commit_message_with_codex(
+                    repo_root=repo_root,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    model=DEFAULT_CODEX_MODEL,
+                    api_key=api_key,
+                )
+            else:
+                if not api_key:
+                    raise UserError("OPENAI_API_KEY is not set in the environment.")
+                message = generate_commit_message(
+                    config=config,
+                    api_key=api_key,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                )
         if dry_run:
             console.print(message)
             return
         extra_args = _filtered_git_args(ctx.args)
         exit_code = _run_git_commit(repo_root, message, extra_args, no_edit=no_edit)
         raise typer.Exit(code=exit_code)
+    except typer.Exit:
+        raise
     except CmtrError as exc:
         error_console.print(f"[red]cmtr error:[/red] {exc}")
         raise typer.Exit(code=1)
@@ -184,6 +215,7 @@ def prepare_commit_msg(
     text_verbosity: str | None = typer.Option(None, "--text-verbosity"),
     base_url: str | None = typer.Option(None, "--base-url"),
     organization: str | None = typer.Option(None, "--organization"),
+    prefer_codex: bool | None = typer.Option(None, "--prefer-codex/--no-prefer-codex"),
 ) -> None:
     console = Console(stderr=True)
     overrides = {
@@ -198,12 +230,19 @@ def prepare_commit_msg(
         "text_verbosity": text_verbosity,
         "base_url": base_url,
         "organization": organization,
+        "prefer_codex": prefer_codex,
     }
     try:
         repo_root = resolve_repo_root(Path.cwd())
         config = load_config(repo_root, overrides=overrides)
-        api_key = _require_api_key()
-        with StatusLine(console, "Generating commit message..."):
+        api_key = _get_api_key()
+        backend = select_backend(config, api_key)
+        status_text = (
+            "Generating commit message (codex)..."
+            if backend == "codex"
+            else "Generating commit message..."
+        )
+        with StatusLine(console, status_text):
             exit_code = run_prepare_commit_msg(
                 message_path=message_path,
                 source=source,
@@ -213,7 +252,9 @@ def prepare_commit_msg(
                 api_key=api_key,
             )
         raise typer.Exit(code=exit_code)
-    except OpenAIError as exc:
+    except typer.Exit:
+        raise
+    except (OpenAIError, CodexError) as exc:
         append_failure_comment(message_path, str(exc))
         console.print(f"[red]cmtr error:[/red] {exc}")
         raise typer.Exit(code=0)
@@ -227,10 +268,10 @@ def prepare_commit_msg(
         raise typer.Exit(code=0)
 
 
-def _require_api_key() -> str:
+def _get_api_key() -> str | None:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise UserError("OPENAI_API_KEY is not set in the environment.")
+        return None
     return api_key
 
 
@@ -340,3 +381,34 @@ def _format_config_value(value: object) -> str:
     if isinstance(value, str):
         return value
     return str(value)
+
+
+@auth_app.command("status")
+def auth_status() -> None:
+    api_key_set = bool(os.getenv("OPENAI_API_KEY"))
+    status = codex_status()
+    codex_installed = status.codex_path is not None
+    npx_installed = status.npx_path is not None
+    codex_auth = status.auth_exists
+    try:
+        repo_root = resolve_repo_root(Path.cwd())
+        config = load_config(repo_root)
+    except CmtrError:
+        config = None
+    if config is not None:
+        mode, reason = describe_auth_mode(config, os.getenv("OPENAI_API_KEY"))
+    else:
+        mode, reason = ("unknown", "Failed to load config.")
+    lines = [
+        f"OPENAI_API_KEY: {'set' if api_key_set else 'missing'}",
+        f"codex CLI: {'found' if codex_installed else 'not found'}",
+        f"npx: {'found' if npx_installed else 'not found'}",
+        f"codex auth.json: {'present' if codex_auth else 'missing'}",
+        f"codex auth path: {status.auth_path}",
+        f"prefer_codex: {config.prefer_codex if config else 'unknown'}",
+        f"selected mode: {mode}",
+    ]
+    if reason:
+        lines.append(f"note: {reason}")
+    for line in lines:
+        typer.echo(line)

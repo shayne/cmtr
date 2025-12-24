@@ -14,6 +14,9 @@ cmtr writes your git commit messages for you. It uses the OpenAI API (gpt-5.2), 
    - `git add -A`
    - `cmtr`
 
+If you don't want to manage an API key, install Codex CLI and sign in. cmtr will
+use Codex automatically when `OPENAI_API_KEY` is not set.
+
 Or install the git hook:
 
 - `cmtr --hook`
@@ -70,9 +73,12 @@ max_log_body_lines = 6
 timeout_seconds = 60
 reasoning_effort = "none"
 text_verbosity = "low"
+prefer_codex = false
 base_url = "https://api.openai.com/v1"
 organization = "org_..."
 ```
+
+Set `prefer_codex = true` to force Codex CLI when available (even if `OPENAI_API_KEY` is set).
 
 Environment variables:
 
@@ -88,6 +94,7 @@ Environment variables:
 - `CMTR_TIMEOUT_SECONDS`
 - `CMTR_REASONING_EFFORT`
 - `CMTR_TEXT_VERBOSITY`
+- `CMTR_PREFER_CODEX`
 
 ## Development
 
@@ -107,5 +114,5 @@ If you are installing manually, run `uv sync --group dev` first to install the t
 ## Troubleshooting
 
 - No staged changes: run `git add` before cmtr.
-- Missing API key: set `OPENAI_API_KEY` in your environment.
+- Missing API key: set `OPENAI_API_KEY` or install/login to Codex CLI.
 - Hook failures: a `# cmtr failed: ...` comment is appended to the commit message template.

@@ -20,6 +20,7 @@ class Config:
     timeout_seconds: float
     reasoning_effort: str
     text_verbosity: str
+    prefer_codex: bool
     base_url: str | None
     organization: str | None
 
@@ -34,6 +35,7 @@ DEFAULT_CONFIG = Config(
     timeout_seconds=60.0,
     reasoning_effort="none",
     text_verbosity="low",
+    prefer_codex=False,
     base_url=None,
     organization=None,
 )
@@ -133,6 +135,7 @@ def _read_env() -> dict[str, Any]:
         "timeout_seconds": "CMTR_TIMEOUT_SECONDS",
         "reasoning_effort": "CMTR_REASONING_EFFORT",
         "text_verbosity": "CMTR_TEXT_VERBOSITY",
+        "prefer_codex": "CMTR_PREFER_CODEX",
         "base_url": "OPENAI_BASE_URL",
         "organization": "OPENAI_ORG",
     }
@@ -173,6 +176,16 @@ def _coerce_value(key: str, value: Any) -> Any:
             return float(value)
         except (TypeError, ValueError) as exc:
             raise ConfigError("timeout_seconds must be a number") from exc
+    if key == "prefer_codex":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "off"}:
+                return False
+        raise ConfigError("prefer_codex must be a boolean")
     if isinstance(value, str):
         return value
     return value

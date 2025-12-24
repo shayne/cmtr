@@ -16,3 +16,7 @@ class ConfigError(CmtrError):
 
 class OpenAIError(CmtrError):
     """OpenAI request failed or returned unusable output."""
+
+
+class CodexError(CmtrError):
+    """Codex CLI invocation failed or returned unusable output."""
