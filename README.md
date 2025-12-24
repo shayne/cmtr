@@ -8,14 +8,17 @@ cmtr writes your git commit messages for you. It uses the OpenAI API (gpt-5.2), 
    - `uvx cmtr@latest`
 2. Optional: add a shell alias:
    - `alias cmtr="uvx cmtr@latest"`
-3. Export your API key:
-   - `export OPENAI_API_KEY=...`
+3. Authenticate (preferred: Codex):
+   - Codex CLI (preferred): run `npx @openai/codex@latest` and sign in (uses your ChatGPT account)
+   - API key (alternative): `export OPENAI_API_KEY=...`
 4. Stage changes and run:
    - `git add -A`
    - `cmtr`
 
-If you don't want to manage an API key, install Codex CLI and sign in. cmtr will
-use Codex automatically when `OPENAI_API_KEY` is not set.
+Codex mode is preferred because it uses your ChatGPT account usage (not separate
+API billing) and requires no API key. If Codex isn't on your PATH, cmtr will run
+it via `npx @openai/codex@latest` as long as you're signed in. If `OPENAI_API_KEY`
+is not set and you are signed into Codex, cmtr will use Codex automatically.
 
 Or install the git hook:
 
@@ -78,7 +81,8 @@ base_url = "https://api.openai.com/v1"
 organization = "org_..."
 ```
 
-Set `prefer_codex = true` to force Codex CLI when available (even if `OPENAI_API_KEY` is set).
+Set `prefer_codex = true` to force Codex CLI (even if `OPENAI_API_KEY` is set).
+Use `cmtr auth status` to see which mode will be selected and why.
 
 Environment variables:
 
@@ -115,4 +119,5 @@ If you are installing manually, run `uv sync --group dev` first to install the t
 
 - No staged changes: run `git add` before cmtr.
 - Missing API key: set `OPENAI_API_KEY` or install/login to Codex CLI.
+- Unsure which auth mode is active: run `cmtr auth status`.
 - Hook failures: a `# cmtr failed: ...` comment is appended to the commit message template.
