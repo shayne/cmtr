@@ -1,6 +1,6 @@
 [project]
 name = "cmtr"
-version = "0.2.5"
+version = "0.2.6"
 description = "AI-powered git commit message generator"
 readme = "README.md"
 authors = [
@@ -22,14 +22,14 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
-    "openai>=1.40.0",
-    "rich>=13.8.0",
-    "typer>=0.12.3",
+    "openai>=2.14.0",
+    "rich>=14.2.0",
+    "typer>=0.21.0",
 ]
 
 [dependency-groups]
 dev = [
-    "ty>=0.0.6",
+    "ty>=0.0.7",
 ]
 
 [project.scripts]
@@ -44,5 +44,5 @@ Issues = "https://github.com/shayne/cmtr/issues"
 include = ["src"]
 
 [build-system]
-requires = ["uv_build>=0.9.17,<0.10.0"]
+requires = ["uv_build>=0.9.18,<0.10.0"]
 build-backend = "uv_build"
