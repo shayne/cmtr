@@ -15,6 +15,7 @@ class PromptContext:
     log_contexts: Sequence[LogContext]
     max_log_body_lines: int
     diff_was_truncated: bool
+    diff_was_filtered: bool
     has_commit_history: bool
 
 
@@ -44,8 +45,13 @@ def build_user_prompt(context: PromptContext) -> str:
         lines.append("")
     if context.diff_patch:
         label = "Diff patch"
+        qualifiers: list[str] = []
         if context.diff_was_truncated:
-            label += " (truncated)"
+            qualifiers.append("truncated")
+        if context.diff_was_filtered:
+            qualifiers.append("filtered")
+        if qualifiers:
+            label += f" ({', '.join(qualifiers)})"
         lines.append(f"{label}:")
         lines.append(context.diff_patch)
         lines.append("")

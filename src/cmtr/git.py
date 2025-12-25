@@ -20,6 +20,15 @@ class LogContext:
     entries: list[CommitMessage]
 
 
+@dataclass(frozen=True)
+class DiffNumStat:
+    path: str
+    added: int | None
+    deleted: int | None
+    is_binary: bool
+    path_before: str | None = None
+
+
 def run_git(args: Sequence[str], cwd: Path) -> str:
     result = subprocess.run(
         ["git", *args],
@@ -67,8 +76,57 @@ def get_diff_stat(repo_root: Path) -> str:
     return run_git(["diff", "--cached", "--stat"], repo_root).strip()
 
 
-def get_diff_patch(repo_root: Path) -> str:
-    return run_git(["diff", "--cached"], repo_root)
+def get_diff_patch(repo_root: Path, paths: Sequence[str] | None = None) -> str:
+    args = ["diff", "--cached"]
+    if paths:
+        args.extend(["--", *paths])
+    return run_git(args, repo_root)
+
+
+def get_diff_numstat(repo_root: Path) -> list[DiffNumStat]:
+    output = run_git(["diff", "--cached", "--numstat", "-z"], repo_root)
+    if not output:
+        return []
+    parts = output.split("\0")
+    entries: list[DiffNumStat] = []
+    index = 0
+    while index < len(parts):
+        header = parts[index]
+        index += 1
+        if not header:
+            continue
+        fields = header.split("\t")
+        if len(fields) < 3:
+            continue
+        added_raw, deleted_raw, path = fields[0], fields[1], fields[2]
+        is_binary = added_raw == "-" or deleted_raw == "-"
+        added = None if is_binary else int(added_raw)
+        deleted = None if is_binary else int(deleted_raw)
+        if path == "":
+            if index + 1 >= len(parts):
+                break
+            path_before = parts[index]
+            path_after = parts[index + 1]
+            index += 2
+            entries.append(
+                DiffNumStat(
+                    path=path_after,
+                    added=added,
+                    deleted=deleted,
+                    is_binary=is_binary,
+                    path_before=path_before,
+                )
+            )
+        else:
+            entries.append(
+                DiffNumStat(
+                    path=path,
+                    added=added,
+                    deleted=deleted,
+                    is_binary=is_binary,
+                )
+            )
+    return entries
 
 
 def gather_log_context(

@@ -162,6 +162,7 @@ def main(
                 log_contexts=context.log_contexts,
                 max_log_body_lines=config.max_log_body_lines,
                 diff_was_truncated=context.diff_was_truncated,
+                diff_was_filtered=context.diff_was_filtered,
                 has_commit_history=context.has_commit_history,
             )
             system_prompt = build_system_prompt()
