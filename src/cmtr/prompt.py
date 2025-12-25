@@ -29,7 +29,7 @@ def build_system_prompt() -> str:
         "- Output ONLY the commit message text (subject line, optional body).\n"
         "- Use imperative mood and be specific about the change.\n"
         "- Follow the style patterns in the examples (prefixes, casing, punctuation, body formatting).\n"
-        "- Prefer a single-line subject unless a body adds essential context.\n"
+        "- Match body usage to the examples: include a body when bodies are common; omit it when they are not unless essential.\n"
         "- If a body is needed, separate it from the subject with a blank line.\n"
         "- Keep the subject concise (aim ~50 chars unless examples show otherwise)."
     )
