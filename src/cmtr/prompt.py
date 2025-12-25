@@ -22,7 +22,9 @@ class PromptContext:
 def build_system_prompt() -> str:
     return (
         "You are an expert software engineer writing concise, accurate Git commit messages. "
-        "Use the provided staged diff and commit history examples to match the repository's style.\n"
+        "Use the provided staged diff and commit history examples to match the repository's style. "
+        "The user prompt uses XML-style tags (e.g. <diff_patch>, <log_examples>) and CDATA blocks "
+        "to label sections; treat those tags as semantic separators, not content.\n"
         "Rules:\n"
         "- Output ONLY the commit message text (subject line, optional body).\n"
         "- Use imperative mood and be specific about the change.\n"
@@ -35,46 +37,74 @@ def build_system_prompt() -> str:
 
 def build_user_prompt(context: PromptContext) -> str:
     lines: list[str] = []
+    lines.append("<context>")
     if context.name_status:
-        lines.append("Staged files (name-status):")
-        lines.append(context.name_status)
-        lines.append("")
+        lines.append('  <staged_files format="name-status">')
+        lines.append(_wrap_cdata(context.name_status))
+        lines.append("  </staged_files>")
     if context.diff_stat:
-        lines.append("Diff stat:")
-        lines.append(context.diff_stat)
-        lines.append("")
+        lines.append('  <diff_stat format="git-diff-stat">')
+        lines.append(_wrap_cdata(context.diff_stat))
+        lines.append("  </diff_stat>")
     if context.diff_patch:
-        label = "Diff patch"
-        qualifiers: list[str] = []
+        attrs: list[str] = []
         if context.diff_was_truncated:
-            qualifiers.append("truncated")
+            attrs.append('truncated="true"')
         if context.diff_was_filtered:
-            qualifiers.append("filtered")
-        if qualifiers:
-            label += f" ({', '.join(qualifiers)})"
-        lines.append(f"{label}:")
-        lines.append(context.diff_patch)
-        lines.append("")
+            attrs.append('filtered="true"')
+        attr_text = f" {' '.join(attrs)}" if attrs else ""
+        lines.append(f'  <diff_patch format="git-diff"{attr_text}>')
+        lines.append(_wrap_cdata(context.diff_patch))
+        lines.append("  </diff_patch>")
     if context.log_contexts:
-        lines.append("Recent commit message examples by path:")
+        lines.append("  <log_examples>")
         for log_context in context.log_contexts:
-            lines.append(f"[{log_context.path}]")
+            path = _xml_escape(log_context.path)
+            lines.append(f'    <path name="{path}">')
             for idx, entry in enumerate(log_context.entries, start=1):
-                lines.append(f"{idx}. {entry.subject}")
+                lines.append(f'      <commit index="{idx}">')
+                lines.append(f"        <subject>{_xml_escape(entry.subject)}</subject>")
                 if entry.body:
                     body_lines = entry.body.splitlines()
                     if context.max_log_body_lines > 0:
                         body_lines = body_lines[: context.max_log_body_lines]
                     if body_lines:
-                        lines.extend(body_lines)
-                lines.append("")
+                        body_text = "\n".join(body_lines)
+                        lines.append(f"        <body>{_xml_escape(body_text)}</body>")
+                lines.append("      </commit>")
+            lines.append("    </path>")
+        lines.append("  </log_examples>")
     elif not context.has_commit_history:
-        lines.append("Commit history: none detected.")
+        lines.append('  <commit_history status="none" />')
+        lines.append("  <fallback_guidance>")
         lines.append(
-            "Default to common git commit conventions: a concise imperative subject"
-            " (aim for ~50 characters) and add a body only when it clarifies why or"
-            " impact. If a body is needed, separate it with a blank line and wrap"
-            " lines around 72 characters. If you choose to add a type/scope prefix,"
-            " follow Conventional Commits (<type>(scope): <description>)."
+            _wrap_cdata(
+                "Default to common git commit conventions: a concise imperative subject"
+                " (aim for ~50 characters) and add a body only when it clarifies why or"
+                " impact. If a body is needed, separate it with a blank line and wrap"
+                " lines around 72 characters. If you choose to add a type/scope prefix,"
+                " follow Conventional Commits (<type>(scope): <description>)."
+            )
         )
+        lines.append("  </fallback_guidance>")
+    lines.append("</context>")
     return "\n".join(lines).strip()
+
+
+def _wrap_cdata(text: str) -> str:
+    if text is None:
+        return "<![CDATA[]]>"
+    safe_text = text.replace("]]>", "]]]]><![CDATA[>")
+    return f"<![CDATA[{safe_text}]]>"
+
+
+def _xml_escape(text: str) -> str:
+    if text is None:
+        return ""
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
