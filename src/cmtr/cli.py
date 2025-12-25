@@ -72,6 +72,11 @@ def main(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Print the generated commit message and exit."
     ),
+    print_prompt: bool = typer.Option(
+        False,
+        "--print-prompt",
+        help="Print the prompts before generating the message.",
+    ),
     no_edit: bool = typer.Option(
         False, "--no-edit", help="Do not open the editor after generating the message."
     ),
@@ -167,6 +172,11 @@ def main(
             )
             system_prompt = build_system_prompt()
             user_prompt = build_user_prompt(prompt_context)
+            if print_prompt:
+                console.print(system_prompt, markup=False)
+                if user_prompt:
+                    console.print("", markup=False)
+                    console.print(user_prompt, markup=False)
             if backend == "codex":
                 message = generate_commit_message_with_codex(
                     repo_root=repo_root,

@@ -33,6 +33,8 @@ Or install the git hook:
   - Behaves like `git commit -v`, but injects a generated commit message.
 - `cmtr --dry-run`
   - Print the generated message without committing.
+- `cmtr --print-prompt`
+  - Print the prompts used to generate the message.
 - `cmtr --no-edit`
   - Skip opening the editor after generating the message.
 - `cmtr --hook`
