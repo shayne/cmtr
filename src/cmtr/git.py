@@ -135,16 +135,30 @@ def gather_log_context(
     max_paths: int,
     max_entries: int,
 ) -> list[LogContext]:
-    log_paths = _select_log_paths(staged_files, max_paths)
+    if max_paths <= 0 or max_entries <= 0:
+        return []
+    target_entries = min(max_entries, 10)
+    if target_entries <= 0:
+        return []
+    changed_lines = _build_changed_line_map(repo_root, staged_files)
+    log_paths = _select_log_paths(staged_files, max_paths, changed_lines)
     contexts: list[LogContext] = []
-    for path in log_paths:
-        entries = _get_log_entries(repo_root, path, max_entries)
-        if entries:
-            contexts.append(LogContext(path=path, entries=entries))
-    if not contexts:
-        entries = _get_log_entries(repo_root, None, max_entries)
-        if entries:
-            contexts.append(LogContext(path="repository", entries=entries))
+    seen: set[tuple[str, str]] = set()
+    primary_entries: list[CommitMessage] = []
+    if log_paths:
+        primary_path = log_paths[0]
+        primary_entries = _get_log_entries(repo_root, primary_path, target_entries)
+        primary_entries = _dedupe_entries(primary_entries, seen)
+        if primary_entries:
+            contexts.append(LogContext(path=primary_path, entries=primary_entries))
+    if len(primary_entries) < target_entries:
+        remaining = target_entries - len(primary_entries)
+        repo_entries = _get_log_entries(repo_root, None, max_entries)
+        repo_entries = _dedupe_entries(repo_entries, seen)
+        if remaining < len(repo_entries):
+            repo_entries = repo_entries[:remaining]
+        if repo_entries:
+            contexts.append(LogContext(path="repository", entries=repo_entries))
     return contexts
 
 
@@ -176,36 +190,33 @@ def _get_log_entries(
     return entries
 
 
-def _select_log_paths(staged_files: Sequence[str], max_paths: int) -> list[str]:
+def _dedupe_entries(
+    entries: Sequence[CommitMessage],
+    seen: set[tuple[str, str]],
+) -> list[CommitMessage]:
+    unique: list[CommitMessage] = []
+    for entry in entries:
+        key = (entry.subject, entry.body)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(entry)
+    return unique
+
+
+def _select_log_paths(
+    staged_files: Sequence[str],
+    max_paths: int,
+    changed_lines: dict[str, int],
+) -> list[str]:
     if not staged_files or max_paths <= 0:
         return []
     staged_files = [file for file in staged_files if file]
-    paths: set[str] = set()
     shared = _common_prefix(staged_files)
-    if shared:
-        paths.add(shared)
-    groups: dict[str, list[str]] = {}
-    for file in staged_files:
-        parts = _split_parts(file)
-        if not parts:
-            continue
-        groups.setdefault(parts[0], []).append(file)
-    for group_files in groups.values():
-        if len(group_files) < 2:
-            continue
-        prefix = _common_prefix(group_files)
-        if prefix:
-            paths.add(prefix)
-    for file in staged_files:
-        if any(_is_prefix(path, file) for path in paths):
-            continue
-        parent = str(Path(file).parent)
-        if parent == ".":
-            paths.add(file)
-        else:
-            paths.add(parent)
-    ordered = sorted(paths, key=lambda p: (-len(_split_parts(p)), p))
-    return ordered[:max_paths]
+    if not shared:
+        fallback = _best_changed_path(staged_files, changed_lines)
+        return [fallback] if fallback else []
+    return [shared]
 
 
 def _split_parts(path: str) -> list[str]:
@@ -235,3 +246,47 @@ def _is_prefix(prefix: str, path: str) -> bool:
     if len(prefix_parts) > len(path_parts):
         return False
     return path_parts[: len(prefix_parts)] == prefix_parts
+
+
+def _build_changed_line_map(
+    repo_root: Path, staged_files: Sequence[str]
+) -> dict[str, int]:
+    if not staged_files:
+        return {}
+    staged_set = {file for file in staged_files if file}
+    if not staged_set:
+        return {}
+    try:
+        entries = get_diff_numstat(repo_root)
+    except GitError:
+        return {}
+    changed: dict[str, int] = {}
+    for entry in entries:
+        if entry.path not in staged_set:
+            continue
+        added = entry.added or 0
+        deleted = entry.deleted or 0
+        changed[entry.path] = changed.get(entry.path, 0) + added + deleted
+    return changed
+
+
+def _best_changed_path(
+    staged_files: Sequence[str],
+    changed_lines: dict[str, int],
+) -> str:
+    if not staged_files:
+        return ""
+    scores: dict[str, int] = {}
+    for file in staged_files:
+        if not file:
+            continue
+        parent = str(Path(file).parent)
+        key = file if parent == "." else parent
+        scores[key] = scores.get(key, 0) + changed_lines.get(file, 0)
+    if not scores:
+        return ""
+    ordered = sorted(
+        scores.items(),
+        key=lambda item: (-item[1], -len(_split_parts(item[0])), item[0]),
+    )
+    return ordered[0][0]

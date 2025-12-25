@@ -351,7 +351,7 @@ def _diff_entry_sort_key(entry: object) -> tuple[int, str]:
     added = getattr(entry, "added", 0) or 0
     deleted = getattr(entry, "deleted", 0) or 0
     path = getattr(entry, "path", "")
-    return ((added + deleted), path)
+    return (-(added + deleted), path)
 
 
 def _would_exceed_budget(
