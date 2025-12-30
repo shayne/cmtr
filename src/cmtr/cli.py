@@ -62,6 +62,11 @@ def main(
         False, "--uninstall-hook", help="Remove the cmtr hook."
     ),
     force: bool = typer.Option(False, "--force", help="Overwrite existing hook."),
+    use_global_hooks: bool = typer.Option(
+        False,
+        "--global",
+        help="Install or remove the hook in the globally configured hooks path.",
+    ),
     version: bool = typer.Option(
         False,
         "--version",
@@ -143,11 +148,11 @@ def main(
     try:
         repo_root = resolve_repo_root(Path.cwd())
         if hook:
-            hook_path = install_hook(repo_root, force=force)
+            hook_path = install_hook(repo_root, force=force, use_global=use_global_hooks)
             console.print(f"Hook installed at {hook_path}")
             return
         if uninstall:
-            hook_path = uninstall_hook(repo_root)
+            hook_path = uninstall_hook(repo_root, use_global=use_global_hooks)
             console.print(f"Hook removed from {hook_path}")
             return
         config = load_config(repo_root, overrides=ctx.obj)

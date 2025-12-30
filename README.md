@@ -26,6 +26,9 @@ Or install the git hook:
   - Installs a `prepare-commit-msg` hook that automatically generates a commit message
     right before the commit editor opens. If there is already a message or you're in a
     rebase/fixup/squash flow, it skips.
+  - If the repo sets `core.hooksPath` in its local git config, cmtr installs the hook
+    in that directory. If only a global `core.hooksPath` is set, re-run with `--global`
+    or set a local override with `git config --local core.hooksPath .git/hooks`.
 
 ## Usage
 
@@ -39,6 +42,8 @@ Or install the git hook:
   - Skip opening the editor after generating the message.
 - `cmtr --hook`
   - Install the `prepare-commit-msg` hook to auto-generate messages on every commit.
+- `cmtr --global --hook`
+  - Install the hook in the globally configured hooks path.
 - `cmtr --uninstall-hook`
   - Remove the hook.
 

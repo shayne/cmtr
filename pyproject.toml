@@ -1,6 +1,6 @@
 [project]
 name = "cmtr"
-version = "0.2.6"
+version = "0.2.7"
 description = "AI-powered git commit message generator"
 readme = "README.md"
 authors = [
@@ -30,6 +30,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ty>=0.0.7",
+    "pytest>=8.0.0",
 ]
 
 [project.scripts]

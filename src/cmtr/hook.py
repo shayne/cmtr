@@ -12,8 +12,8 @@ from .git import get_hooks_dir, run_git
 HOOK_MARKER = "# cmtr hook v1"
 
 
-def install_hook(repo_root: Path, force: bool) -> Path:
-    hooks_dir = get_hooks_dir(repo_root)
+def install_hook(repo_root: Path, force: bool, *, use_global: bool = False) -> Path:
+    hooks_dir = get_hooks_dir(repo_root, use_global=use_global)
     hooks_dir.mkdir(parents=True, exist_ok=True)
     hook_path = hooks_dir / "prepare-commit-msg"
     if hook_path.exists() and not _is_our_hook(hook_path):
@@ -27,8 +27,8 @@ def install_hook(repo_root: Path, force: bool) -> Path:
     return hook_path
 
 
-def uninstall_hook(repo_root: Path) -> Path:
-    hooks_dir = get_hooks_dir(repo_root)
+def uninstall_hook(repo_root: Path, *, use_global: bool = False) -> Path:
+    hooks_dir = get_hooks_dir(repo_root, use_global=use_global)
     hook_path = hooks_dir / "prepare-commit-msg"
     if not hook_path.exists():
         raise UserError("No prepare-commit-msg hook found.")

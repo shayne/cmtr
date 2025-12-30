@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 from typing import Iterable, Sequence
 
-from .errors import GitError
+from .errors import GitError, UserError
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,12 @@ class DiffNumStat:
     deleted: int | None
     is_binary: bool
     path_before: str | None = None
+
+
+@dataclass(frozen=True)
+class HooksPathEntry:
+    origin: str
+    path: str
 
 
 def run_git(args: Sequence[str], cwd: Path) -> str:
@@ -57,9 +63,111 @@ def get_repo_root(cwd: Path) -> Path:
     return Path(output.strip())
 
 
-def get_hooks_dir(repo_root: Path) -> Path:
+def get_hooks_dir(repo_root: Path, *, use_global: bool = False) -> Path:
+    entries = _get_hooks_path_entries(repo_root)
+    local_config = _get_local_config_path(repo_root)
+    local_entry: HooksPathEntry | None = None
+    global_entry: HooksPathEntry | None = None
+    for entry in entries:
+        origin_path = _origin_path(entry.origin, repo_root)
+        if origin_path and _same_path(origin_path, local_config):
+            local_entry = entry
+        else:
+            global_entry = entry
+
+    if use_global:
+        if global_entry:
+            return _resolve_hooks_path(repo_root, global_entry.path)
+        raise UserError(
+            "core.hooksPath is not set globally. Configure it with:\n"
+            "  git config --global core.hooksPath <path>"
+        )
+
+    if local_entry:
+        return _resolve_hooks_path(repo_root, local_entry.path)
+
+    if global_entry:
+        raise UserError(
+            "core.hooksPath is set in global git config. "
+            "Re-run with --global to install/remove the hook there, or set a "
+            "repo-local hooks path with:\n"
+            "  git config --local core.hooksPath .git/hooks\n"
+            "Then re-run cmtr."
+        )
+
     output = run_git(["rev-parse", "--git-path", "hooks"], repo_root)
     return Path(output.strip())
+
+
+def parse_hooks_path_entries(output: str) -> list[HooksPathEntry]:
+    entries: list[HooksPathEntry] = []
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parsed = _split_origin_line(line)
+        if not parsed:
+            continue
+        origin, rest = parsed
+        key, value = _split_key_value(rest)
+        if not key:
+            continue
+        if key.lower() != "core.hookspath":
+            continue
+        if not value:
+            continue
+        entries.append(HooksPathEntry(origin=origin, path=value))
+    return entries
+
+
+def _get_hooks_path_entries(repo_root: Path) -> list[HooksPathEntry]:
+    output = run_git(["config", "--show-origin", "--list"], repo_root)
+    return parse_hooks_path_entries(output)
+
+
+def _get_local_config_path(repo_root: Path) -> Path:
+    output = run_git(["rev-parse", "--git-path", "config"], repo_root)
+    path = Path(output.strip())
+    if not path.is_absolute():
+        path = repo_root / path
+    return path
+
+
+def _resolve_hooks_path(repo_root: Path, hooks_path: str) -> Path:
+    path = Path(hooks_path).expanduser()
+    if not path.is_absolute():
+        path = repo_root / path
+    return path
+
+
+def _origin_path(origin: str, repo_root: Path) -> Path | None:
+    if not origin.startswith("file:"):
+        return None
+    path = Path(origin[5:])
+    if not path.is_absolute():
+        path = repo_root / path
+    return path
+
+
+def _split_origin_line(line: str) -> tuple[str, str] | None:
+    if "\t" in line:
+        origin, rest = line.split("\t", 1)
+        return origin, rest.strip()
+    parts = line.split(None, 1)
+    if len(parts) < 2:
+        return None
+    return parts[0], parts[1].strip()
+
+
+def _split_key_value(text: str) -> tuple[str | None, str]:
+    if "=" not in text:
+        return None, text.strip()
+    key, value = text.split("=", 1)
+    return key.strip(), value.strip()
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    return left.resolve(strict=False) == right.resolve(strict=False)
 
 
 def get_staged_files(repo_root: Path) -> list[str]:

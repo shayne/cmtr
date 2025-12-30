@@ -37,3 +37,4 @@ Direct uv equivalents:
 - Update `pyproject.toml` when adding dependencies or CLI entry points.
 - Keep `mise.toml` in sync with required tool versions and tasks.
 - Regenerate `uv.lock` via `uv sync` when dependencies change.
+- Always keep `README.md` up to date when adding, removing, or changing user-facing behavior.
