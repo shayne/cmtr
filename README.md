@@ -1,6 +1,6 @@
 # cmtr
 
-cmtr writes your git commit messages for you. It uses the OpenAI API (gpt-5.2), the staged diff, and recent commit history to match the repository's style.
+cmtr writes your git commit messages for you. It prefers Codex CLI (using your ChatGPT account) and also supports the OpenAI API (gpt-5.2). It uses the staged diff and recent commit history to match the repository's style.
 
 ## Quick start (recommended)
 
