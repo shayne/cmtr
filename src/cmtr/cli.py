@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import importlib.metadata
 import os
+import shutil
 import subprocess
 import tempfile
 
@@ -25,7 +26,15 @@ from .codex_client import (
     codex_status,
     generate_commit_message_with_codex,
 )
-from .hook import append_failure_comment, install_hook, run_prepare_commit_msg, uninstall_hook
+from .hook import (
+    append_failure_comment,
+    detect_pre_commit_config,
+    install_hook,
+    PRE_COMMIT_INLINE_ENTRY,
+    pre_commit_hook_status,
+    run_prepare_commit_msg,
+    uninstall_hook,
+)
 from .openai_client import generate_commit_message
 from .prompt import PromptContext, build_system_prompt, build_user_prompt
 from .ui import StatusLine
@@ -148,8 +157,43 @@ def main(
     try:
         repo_root = resolve_repo_root(Path.cwd())
         if hook:
+            pre_commit_config = detect_pre_commit_config(repo_root)
+            if pre_commit_config:
+                if use_global_hooks:
+                    raise UserError("pre-commit config detected; --global is not supported.")
+                hook_status = pre_commit_hook_status(pre_commit_config)
+                if hook_status == "cmtr":
+                    console.print(
+                        f"cmtr pre-commit hook already configured in {pre_commit_config.name}."
+                    )
+                    console.print("Nothing to do.")
+                    return
+                if hook_status == "other" and not force:
+                    raise UserError(
+                        "prepare-commit-msg hook already configured in pre-commit. "
+                        "Re-run with --force to replace."
+                    )
+                if hook_status == "other" and force:
+                    console.print(
+                        "pre-commit prepare-commit-msg hook found; will replace with:"
+                    )
+                else:
+                    console.print("Will add pre-commit prepare-commit-msg hook:")
+                console.print(f"  {PRE_COMMIT_INLINE_ENTRY}")
+                console.print("  default_stages: [pre-commit] (if missing)")
+                consent = typer.confirm("Install now?", default=False)
+                if not consent:
+                    console.print("Hook install canceled.")
+                    return
             hook_path = install_hook(repo_root, force=force, use_global=use_global_hooks)
             console.print(f"Hook installed at {hook_path}")
+            if pre_commit_config:
+                run_install = typer.confirm(
+                    "Run `pre-commit install --hook-type prepare-commit-msg` now?",
+                    default=True,
+                )
+                if run_install:
+                    _run_pre_commit_install(repo_root)
             return
         if uninstall:
             hook_path = uninstall_hook(repo_root, use_global=use_global_hooks)
@@ -289,6 +333,19 @@ def _get_api_key() -> str | None:
     if not api_key:
         return None
     return api_key
+
+
+def _run_pre_commit_install(repo_root: Path) -> None:
+    if shutil.which("pre-commit") is None:
+        raise UserError("pre-commit is not on PATH.")
+    result = subprocess.run(
+        ["pre-commit", "install", "--hook-type", "prepare-commit-msg"],
+        cwd=repo_root,
+    )
+    if result.returncode != 0:
+        raise UserError(
+            "pre-commit install failed. Re-run manually to activate the hook."
+        )
 
 
 def _filtered_git_args(args: list[str]) -> list[str]:

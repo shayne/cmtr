@@ -29,6 +29,10 @@ Or install the git hook:
   - If the repo sets `core.hooksPath` in its local git config, cmtr installs the hook
     in that directory. If only a global `core.hooksPath` is set, re-run with `--global`
     or set a local override with `git config --local core.hooksPath .git/hooks`.
+  - If a `.pre-commit-config.yaml`/`.yml` is present, cmtr will prompt to install a
+    pre-commit `prepare-commit-msg` hook instead (adds an entry that runs
+    `uvx cmtr@latest prepare-commit-msg`). You may need to run
+    `pre-commit install --hook-type prepare-commit-msg` after accepting.
 
 ## Usage
 
