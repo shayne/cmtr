@@ -147,6 +147,17 @@ def test_collect_context_filters_lockfile_only_diff(tmp_path: Path) -> None:
     assert "diff --git" not in context.diff_patch
 
 
+def test_collect_context_replaces_invalid_utf8_diff_bytes(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "odd.txt").write_bytes(b"\xff\xfe\n")
+    subprocess.run(["git", "add", "odd.txt"], cwd=tmp_path, check=True)
+
+    context = collect_context(tmp_path, DEFAULT_CONFIG)
+
+    assert "odd.txt" in context.diff_patch
+    assert "\ufffd" in context.diff_patch
+
+
 def test_get_diff_numstat_preserves_tabs_in_paths(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         git,
