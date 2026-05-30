@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from .config import Config
-from .errors import CodexError, UserError
+from .errors import CodexError, OpenAIError, UserError
 from .git import (
     DiffNumStat,
     LogContext,
@@ -195,12 +195,31 @@ def generate_message_from_prompts(
             ) from exc
     if not api_key:
         raise UserError("OPENAI_API_KEY is not set in the environment.")
-    return generate_commit_message(
-        config=config,
-        api_key=api_key,
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-    )
+    try:
+        return generate_commit_message(
+            config=config,
+            api_key=api_key,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+        )
+    except OpenAIError as exc:
+        if config.prefer_codex or not is_codex_available():
+            raise
+        if on_backend_status:
+            on_backend_status("codex_fallback")
+        try:
+            return generate_commit_message_with_codex(
+                repo_root=repo_root,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                model=config.codex_model,
+                api_key=api_key,
+                timeout_seconds=config.timeout_seconds,
+            )
+        except CodexError as codex_exc:
+            raise UserError(
+                f"OpenAI failed: {exc}; Codex fallback failed: {codex_exc}"
+            ) from codex_exc
 
 
 def resolve_repo_root(cwd: Path) -> Path:

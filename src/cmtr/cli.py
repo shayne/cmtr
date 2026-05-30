@@ -446,6 +446,8 @@ def _run_pre_commit_install(repo_root: Path) -> None:
 def _update_generation_status(status: StatusLine, backend: str) -> None:
     if backend == "codex":
         status.update("Generating commit message (codex)...")
+    elif backend == "codex_fallback":
+        status.update("Generating commit message (Codex fallback)...")
     elif backend == "openai_fallback":
         status.update("Generating commit message (OpenAI fallback)...")
     else:

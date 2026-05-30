@@ -3,7 +3,7 @@ from pathlib import Path
 
 import cmtr.core as core
 from cmtr.config import DEFAULT_CONFIG
-from cmtr.errors import CodexError
+from cmtr.errors import CodexError, OpenAIError
 
 
 def test_generate_message_passes_configured_model_to_codex(
@@ -167,3 +167,36 @@ def test_generate_message_from_prompts_reports_backend_sequence(
 
     assert message == "feat: fallback to api"
     assert statuses == ["codex", "openai_fallback"]
+
+
+def test_generate_message_falls_back_to_codex_when_api_first_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    statuses: list[str] = []
+    captured: dict[str, object] = {}
+    config = replace(DEFAULT_CONFIG, prefer_codex=False)
+    monkeypatch.setattr(core, "is_codex_available", lambda: True)
+    monkeypatch.setattr(
+        core,
+        "generate_commit_message",
+        lambda **kwargs: (_ for _ in ()).throw(OpenAIError("api failed")),
+    )
+
+    def fake_codex(**kwargs):
+        captured.update(kwargs)
+        return "feat: fallback to codex"
+
+    monkeypatch.setattr(core, "generate_commit_message_with_codex", fake_codex)
+
+    message = core.generate_message_from_prompts(
+        repo_root=tmp_path,
+        config=config,
+        api_key="test-key",
+        system_prompt="system",
+        user_prompt="user",
+        on_backend_status=statuses.append,
+    )
+
+    assert message == "feat: fallback to codex"
+    assert statuses == ["openai", "codex_fallback"]
+    assert captured["api_key"] == "test-key"
