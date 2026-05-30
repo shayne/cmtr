@@ -511,6 +511,8 @@ def _filtered_git_args(args: list[str]) -> list[str]:
     forbidden_attached_short = ("-m", "-F", "-t", "-c", "-C")
     forbidden_short_options = {"a", "i", "o", "p", "m", "F", "t", "c", "C", "z"}
     forbidden_attached_long = (
+        "--include=",
+        "--only=",
         "--cleanup=",
         "--message=",
         "--file=",
