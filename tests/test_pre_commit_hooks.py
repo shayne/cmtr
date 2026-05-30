@@ -183,6 +183,19 @@ def test_remove_pre_commit_hook_removes_entry(tmp_path: Path) -> None:
     assert "id: other" in text
 
 
+def test_remove_pre_commit_hook_removes_empty_local_repo(tmp_path: Path) -> None:
+    config = _write(
+        tmp_path / ".pre-commit-config.yaml",
+        """repos:\n  - repo: https://example.com\n    rev: v1\n    hooks:\n      - id: trailing-whitespace\n  - repo: local\n    hooks:\n      - id: prepare-commit-msg\n        name: prepare-commit-msg\n        entry: uvx cmtr@latest prepare-commit-msg\n        language: system\n        stages: [prepare-commit-msg]\n""",
+    )
+    assert remove_pre_commit_hook(config)
+    text = config.read_text(encoding="utf-8")
+    assert "repo: https://example.com" in text
+    assert "id: trailing-whitespace" in text
+    assert "repo: local" not in text
+    assert "id: prepare-commit-msg" not in text
+
+
 def test_remove_pre_commit_hook_ignores_non_local_matching_hook_id(
     tmp_path: Path,
 ) -> None:

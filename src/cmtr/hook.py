@@ -211,6 +211,7 @@ def remove_pre_commit_hook(config_path: Path) -> bool:
         return False
     start_index, end_index = hook_block
     new_lines = lines[:start_index] + lines[end_index:]
+    new_lines = _remove_empty_local_repo(new_lines)
     newline = "\r\n" if "\r\n" in contents else "\n"
     text = "".join(new_lines)
     if text and not text.endswith(newline):
@@ -349,6 +350,31 @@ def _find_local_hook_block_by_id(
         start=hooks_index + 1,
         end=hooks_end,
     )
+
+
+def _remove_empty_local_repo(lines: list[str]) -> list[str]:
+    repos_index, repos_indent = _find_repos_line(lines)
+    if repos_index is None:
+        return lines
+    repos_end = _find_repos_list_end(lines, repos_index, repos_indent)
+    local_repo_index, local_repo_indent = _find_local_repo(
+        lines, repos_index, repos_end
+    )
+    if local_repo_index is None:
+        return lines
+    local_end = _find_repo_block_end(
+        lines, local_repo_index, local_repo_indent, repos_end
+    )
+    hooks_index, hooks_indent = _find_hooks_line(lines, local_repo_index, local_end)
+    if hooks_index is None:
+        return lines
+    hooks_end = _find_hooks_list_end(lines, hooks_index, hooks_indent, local_end)
+    for line in lines[hooks_index + 1 : hooks_end]:
+        if _is_blank_or_comment(line):
+            continue
+        if line.lstrip().startswith("- "):
+            return lines
+    return lines[:local_repo_index] + lines[local_end:]
 
 
 def _extract_entry_from_block(lines: list[str], start: int, end: int) -> str | None:
