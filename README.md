@@ -62,8 +62,9 @@ Extra git commit flags can be passed directly (for example, `--no-verify`).
 cmtr rejects message-supplying, message-shaping, and content-changing flags
 such as `-a`, `-i`, `-o`, `-m`, `-F`, `-t`, `-C`, `-c`, `--amend`,
 `--allow-empty`, `--cleanup`, `--fixup`, `--squash`, `--patch`,
-`--interactive`, `--dry-run`, `--pathspec-from-file`, and their long-form
-equivalents because cmtr supplies the message and analyzes the staged diff
+`--interactive`, `--dry-run`, `--edit`, `--no-edit`, `--include`, `--only`,
+`--pathspec-from-file`, and their attached/long-form equivalents because cmtr
+supplies the message, controls editor behavior, and analyzes the staged diff
 before running `git commit`.
 Safe metadata/trailer options such as `--author`, `--date`, `--signoff`,
 `--gpg-sign`, and `--trailer` are passed through.
