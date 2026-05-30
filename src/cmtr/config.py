@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import json
 import os
 import tomllib
 from typing import Any
@@ -257,6 +258,4 @@ def _format_toml_value(value: Any) -> str:
         return str(value)
     if value is None:
         return '""'
-    text = str(value)
-    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
+    return json.dumps(str(value))

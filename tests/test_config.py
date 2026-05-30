@@ -4,7 +4,12 @@ import pytest
 from typer.testing import CliRunner
 
 import cmtr.cli as cli
-from cmtr.config import DEFAULT_CONFIG, load_config
+from cmtr.config import (
+    DEFAULT_CONFIG,
+    load_config,
+    read_global_config,
+    write_global_config,
+)
 from cmtr.errors import ConfigError
 
 
@@ -209,6 +214,16 @@ def test_config_get_rejects_invalid_global_config(tmp_path: Path, monkeypatch) -
 
     assert result.exit_code == 1
     assert "prefer_codex must be a boolean" in result.output
+
+
+def test_write_global_config_escapes_multiline_strings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    write_global_config({"project": "line\nnext"})
+
+    assert read_global_config()["project"] == "line\nnext"
 
 
 def test_config_unset_removes_unknown_existing_key(tmp_path: Path, monkeypatch) -> None:
