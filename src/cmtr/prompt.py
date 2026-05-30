@@ -66,7 +66,7 @@ def build_user_prompt(context: PromptContext) -> str:
                 lines.append(f"        <subject>{_xml_escape(entry.subject)}</subject>")
                 if entry.body:
                     body_lines = entry.body.splitlines()
-                    if context.max_log_body_lines > 0:
+                    if context.max_log_body_lines >= 0:
                         body_lines = body_lines[: context.max_log_body_lines]
                     if body_lines:
                         body_text = "\n".join(body_lines)
