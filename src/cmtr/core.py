@@ -184,12 +184,17 @@ def generate_message_from_prompts(
             if api_key:
                 if on_backend_status:
                     on_backend_status("openai_fallback")
-                return generate_commit_message(
-                    config=config,
-                    api_key=api_key,
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt,
-                )
+                try:
+                    return generate_commit_message(
+                        config=config,
+                        api_key=api_key,
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                    )
+                except OpenAIError as openai_exc:
+                    raise UserError(
+                        f"Codex failed: {exc}; OpenAI fallback failed: {openai_exc}"
+                    ) from openai_exc
             raise UserError(
                 f"Codex failed: {exc}. Install/login to Codex or set OPENAI_API_KEY."
             ) from exc
