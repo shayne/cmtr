@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import json
+import math
 import os
 import tomllib
 from typing import Any
@@ -204,6 +205,8 @@ def _coerce_value(key: str, value: Any) -> Any:
     if value is None:
         return None
     if key in _NON_NEGATIVE_INTEGER_KEYS:
+        if isinstance(value, bool):
+            raise ConfigError(f"{key} must be an integer")
         try:
             number = int(value)
         except (TypeError, ValueError) as exc:
@@ -216,6 +219,8 @@ def _coerce_value(key: str, value: Any) -> Any:
             number = float(value)
         except (TypeError, ValueError) as exc:
             raise ConfigError("timeout_seconds must be a number") from exc
+        if not math.isfinite(number):
+            raise ConfigError("timeout_seconds must be a finite number")
         if number <= 0:
             raise ConfigError("timeout_seconds must be greater than 0")
         return number
