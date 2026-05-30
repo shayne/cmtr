@@ -205,7 +205,7 @@ def _coerce_value(key: str, value: Any) -> Any:
     if value is None:
         return None
     if key in _NON_NEGATIVE_INTEGER_KEYS:
-        if isinstance(value, bool):
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
             raise ConfigError(f"{key} must be an integer")
         try:
             number = int(value)

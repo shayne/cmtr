@@ -114,6 +114,23 @@ def test_load_config_rejects_boolean_integer_limits(tmp_path: Path, key: str) ->
         load_config(tmp_path)
 
 
+@pytest.mark.parametrize(
+    "key",
+    [
+        "max_diff_bytes",
+        "max_patch_lines",
+        "max_log_entries",
+        "max_log_paths",
+        "max_log_body_lines",
+    ],
+)
+def test_load_config_rejects_float_integer_limits(tmp_path: Path, key: str) -> None:
+    (tmp_path / "cmtr.toml").write_text(f"{key} = 1.5\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=f"{key} must be an integer"):
+        load_config(tmp_path)
+
+
 @pytest.mark.parametrize("key", ["model", "codex_model"])
 def test_load_config_rejects_empty_model_names(tmp_path: Path, key: str) -> None:
     (tmp_path / "cmtr.toml").write_text(f'{key} = "  "\n', encoding="utf-8")
