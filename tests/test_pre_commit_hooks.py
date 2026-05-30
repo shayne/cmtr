@@ -149,6 +149,23 @@ def test_ensure_pre_commit_hook_adds_local_hook_when_non_local_id_matches(
     assert f"entry: {PRE_COMMIT_INLINE_ENTRY}" in text
 
 
+def test_ensure_pre_commit_hook_reports_write_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _write(tmp_path / ".pre-commit-config.yaml", "repos:\n")
+    original_write_text = Path.write_text
+
+    def fail_config_write(self, *args, **kwargs):
+        if self == config:
+            raise OSError("permission denied")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_config_write)
+
+    with pytest.raises(UserError, match="Failed to write pre-commit config"):
+        ensure_pre_commit_hook(config)
+
+
 def test_ensure_pre_commit_hook_uses_quoted_existing_local_repo(
     tmp_path: Path,
 ) -> None:
@@ -216,6 +233,26 @@ def test_remove_pre_commit_hook_ignores_non_local_matching_hook_id(
 
     assert not remove_pre_commit_hook(config)
     assert "entry: other" in config.read_text(encoding="utf-8")
+
+
+def test_remove_pre_commit_hook_reports_write_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _write(
+        tmp_path / ".pre-commit-config.yaml",
+        """repos:\n  - repo: local\n    hooks:\n      - id: prepare-commit-msg\n        entry: uvx cmtr@latest prepare-commit-msg\n        language: system\n""",
+    )
+    original_write_text = Path.write_text
+
+    def fail_config_write(self, *args, **kwargs):
+        if self == config:
+            raise OSError("permission denied")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_config_write)
+
+    with pytest.raises(UserError, match="Failed to write pre-commit config"):
+        remove_pre_commit_hook(config)
 
 
 def test_uninstall_pre_commit_hook_refuses_other(tmp_path: Path) -> None:

@@ -215,7 +215,7 @@ def ensure_pre_commit_hook(config_path: Path) -> bool:
     text = "".join(new_lines)
     if text and not text.endswith(newline):
         text += newline
-    config_path.write_text(text, encoding="utf-8")
+    _write_pre_commit_config(config_path, text)
     return True
 
 
@@ -232,7 +232,7 @@ def remove_pre_commit_hook(config_path: Path) -> bool:
     text = "".join(new_lines)
     if text and not text.endswith(newline):
         text += newline
-    config_path.write_text(text, encoding="utf-8")
+    _write_pre_commit_config(config_path, text)
     return True
 
 
@@ -242,6 +242,15 @@ def _read_pre_commit_config(config_path: Path) -> str:
     except (OSError, UnicodeDecodeError) as exc:
         raise UserError(
             f"Failed to read pre-commit config {config_path}: {exc}"
+        ) from exc
+
+
+def _write_pre_commit_config(config_path: Path, text: str) -> None:
+    try:
+        config_path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise UserError(
+            f"Failed to write pre-commit config {config_path}: {exc}"
         ) from exc
 
 
