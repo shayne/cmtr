@@ -148,3 +148,45 @@ def test_gather_log_context_preserves_delimiter_like_body_text(
     assert len(contexts[0].entries) == 1
     assert contexts[0].entries[0].subject == "feat: add file"
     assert contexts[0].entries[0].body == "Body before\n----END----\nBody after"
+
+
+def test_gather_log_context_preserves_control_separator_body_text(
+    tmp_path: Path,
+) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+    target = tmp_path / "file.txt"
+    target.write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "add", "file.txt"], cwd=tmp_path, check=True)
+    body = "Body before\x1eBody after\nField marker: \x1f"
+    subprocess.run(
+        ["git", "commit", "-m", "feat: add file", "-m", body],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    target.write_text("changed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "file.txt"], cwd=tmp_path, check=True)
+
+    contexts = gather_log_context(
+        tmp_path,
+        ["file.txt"],
+        max_paths=1,
+        max_entries=1,
+    )
+
+    assert len(contexts[0].entries) == 1
+    assert contexts[0].entries[0].subject == "feat: add file"
+    assert contexts[0].entries[0].body == body

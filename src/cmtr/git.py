@@ -35,10 +35,6 @@ class HooksPathEntry:
     path: str
 
 
-_LOG_FIELD_SEPARATOR = "\x1f"
-_LOG_RECORD_SEPARATOR = "\x1e"
-
-
 def run_git(args: Sequence[str], cwd: Path) -> str:
     result = subprocess.run(
         ["git", *args],
@@ -324,7 +320,7 @@ def _get_log_entries(
     args = [
         "log",
         f"--max-count={max_entries}",
-        "--pretty=format:%s%x1f%b%x1e",
+        "--pretty=format:%s%x00%b%x00",
     ]
     if path:
         args.extend(["--", path])
@@ -333,15 +329,17 @@ def _get_log_entries(
     except GitError:
         return []
     entries: list[CommitMessage] = []
-    for chunk in output.split(_LOG_RECORD_SEPARATOR):
-        text = chunk.strip("\n")
-        if not text.strip():
+    parts = output.split("\0")
+    index = 0
+    while index + 1 < len(parts):
+        subject = parts[index]
+        body = parts[index + 1]
+        index += 2
+        if not subject.strip() and not body.strip():
             continue
-        subject, separator, body = text.partition(_LOG_FIELD_SEPARATOR)
-        if not separator:
-            continue
-        subject = subject.strip()
-        body = "\n".join(line.rstrip() for line in body.splitlines()).strip()
+        subject = subject.strip(" \t\r\n")
+        body = body.strip(" \t\r\n")
+        body = "\n".join(line.rstrip(" \t\r") for line in body.split("\n"))
         entries.append(CommitMessage(subject=subject, body=body))
     return entries
 
