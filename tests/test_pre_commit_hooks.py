@@ -285,6 +285,54 @@ def test_local_checkout_hook_skips_when_uv_missing_even_if_mise_exists(
     assert "cmtr: uv not found; skipping commit message generation" in result.stderr
 
 
+def test_installed_hook_skips_when_uvx_command_fails(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_uvx = fake_bin / "uvx"
+    fake_uvx.write_text("#!/bin/sh\nexit 42\n", encoding="utf-8")
+    fake_uvx.chmod(0o755)
+    script_path = tmp_path / "prepare-commit-msg"
+    script_path.write_text(_hook_script_for(None), encoding="utf-8")
+    script_path.chmod(0o755)
+
+    result = subprocess.run(
+        [str(script_path), str(tmp_path / "COMMIT_EDITMSG")],
+        cwd=tmp_path,
+        env={"PATH": str(fake_bin)},
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "cmtr: command failed; skipping commit message generation" in result.stderr
+
+
+def test_local_checkout_hook_skips_when_mise_command_fails(tmp_path: Path) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "pyproject.toml").write_text('[project]\nname = "cmtr"\n')
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    for name in ("uv", "mise"):
+        path = fake_bin / name
+        path.write_text("#!/bin/sh\nexit 42\n", encoding="utf-8")
+        path.chmod(0o755)
+    script_path = tmp_path / "prepare-commit-msg"
+    script_path.write_text(_hook_script_for(checkout), encoding="utf-8")
+    script_path.chmod(0o755)
+
+    result = subprocess.run(
+        [str(script_path), str(tmp_path / "COMMIT_EDITMSG")],
+        cwd=tmp_path,
+        env={"PATH": str(fake_bin)},
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "cmtr: command failed; skipping commit message generation" in result.stderr
+
+
 def test_append_failure_comment_comments_every_error_line(tmp_path: Path) -> None:
     message_path = tmp_path / "COMMIT_EDITMSG"
     message_path.write_text("# Please enter a message\n", encoding="utf-8")
