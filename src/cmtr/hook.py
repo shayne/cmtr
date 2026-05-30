@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import shlex
 import shutil
 import textwrap
 import tomllib
 
 from .config import Config
 from .core import generate_message
-from .errors import UserError
+from .errors import GitError, UserError
 from .git import get_hooks_dir, run_git
 
 HOOK_MARKER = "# cmtr hook v1"
@@ -70,27 +71,40 @@ def run_prepare_commit_msg(
     config: Config,
     api_key: str | None,
 ) -> int:
-    if _should_skip_source(source):
-        return 0
-    if _is_rebase_in_progress(repo_root):
-        return 0
-    if _is_fixup_or_squash(message_path):
-        return 0
-    if _has_existing_message(message_path):
+    if should_skip_prepare_commit_msg(
+        message_path=message_path,
+        source=source,
+        repo_root=repo_root,
+    ):
         return 0
     try:
         message = generate_message(repo_root=repo_root, config=config, api_key=api_key)
         _write_message_prepend(message_path, message)
         return 0
     except Exception as exc:
-        append_failure_comment(message_path, str(exc))
+        append_failure_comment_for_repo(message_path, str(exc), repo_root)
         return 0
+
+
+def should_skip_prepare_commit_msg(
+    message_path: Path,
+    source: str | None,
+    repo_root: Path,
+) -> bool:
+    comment_char = _git_comment_char(repo_root)
+    if _should_skip_source(source):
+        return True
+    if _is_rebase_in_progress(repo_root):
+        return True
+    if _is_fixup_or_squash(message_path, comment_char):
+        return True
+    return _has_existing_message(message_path, comment_char)
 
 
 def _should_skip_source(source: str | None) -> bool:
     if not source:
         return False
-    return source in {"message", "merge", "squash", "commit", "tag", "template"}
+    return source in {"message", "merge", "squash", "commit", "tag"}
 
 
 def _write_message(path: Path, message: str) -> None:
@@ -110,14 +124,22 @@ def _write_message_prepend(path: Path, message: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def append_failure_comment(path: Path, error: str) -> None:
-    comment = f"# cmtr failed: {error}\n"
+def append_failure_comment(path: Path, error: str, *, comment_char: str = "#") -> None:
+    comment_char = comment_char[:1] or "#"
+    lines = error.splitlines() or [""]
+    comment_lines = [f"{comment_char} cmtr failed: {lines[0]}"]
+    comment_lines.extend(f"{comment_char} {line}" for line in lines[1:])
+    comment = "\n".join(comment_lines) + "\n"
     existing = ""
     if path.exists():
         existing = path.read_text(encoding="utf-8")
     if existing and not existing.endswith("\n"):
         existing += "\n"
     path.write_text(existing + comment, encoding="utf-8")
+
+
+def append_failure_comment_for_repo(path: Path, error: str, repo_root: Path) -> None:
+    append_failure_comment(path, error, comment_char=_git_comment_char(repo_root))
 
 
 def _is_our_hook(path: Path) -> bool:
@@ -171,7 +193,8 @@ def ensure_pre_commit_hook(config_path: Path) -> bool:
     if _pre_commit_has_hook_id(lines):
         return False
     newline = "\r\n" if "\r\n" in contents else "\n"
-    lines = _ensure_default_stages(lines, newline)
+    lines = _expand_empty_inline_repos(lines, newline)
+    lines = _expand_empty_inline_hooks(lines, newline)
     new_lines = _insert_pre_commit_hook(lines, newline)
     text = "".join(new_lines)
     if text and not text.endswith(newline):
@@ -183,7 +206,7 @@ def ensure_pre_commit_hook(config_path: Path) -> bool:
 def remove_pre_commit_hook(config_path: Path) -> bool:
     contents = config_path.read_text(encoding="utf-8")
     lines = contents.splitlines(keepends=True)
-    hook_block = _find_hook_block_by_id(lines, PRE_COMMIT_HOOK_ID)
+    hook_block = _find_local_hook_block_by_id(lines, PRE_COMMIT_HOOK_ID)
     if hook_block is None:
         return False
     start_index, end_index = hook_block
@@ -202,14 +225,14 @@ def _insert_pre_commit_hook(lines: list[str], newline: str) -> list[str]:
         raise UserError("pre-commit config missing required `repos:` block.")
     repos_end = _find_repos_list_end(lines, repos_index, repos_indent)
     repo_indent = _infer_repo_indent(lines, repos_index, repos_indent, repos_end)
-    local_repo_index, local_repo_indent = _find_local_repo(lines, repos_index, repos_end)
+    local_repo_index, local_repo_indent = _find_local_repo(
+        lines, repos_index, repos_end
+    )
     if local_repo_index is not None:
         local_end = _find_repo_block_end(
             lines, local_repo_index, local_repo_indent, repos_end
         )
-        hooks_index, hooks_indent = _find_hooks_line(
-            lines, local_repo_index, local_end
-        )
+        hooks_index, hooks_indent = _find_hooks_line(lines, local_repo_index, local_end)
         if hooks_index is not None:
             insert_at = _find_hooks_list_end(
                 lines, hooks_index, hooks_indent, local_end
@@ -222,6 +245,33 @@ def _insert_pre_commit_hook(lines: list[str], newline: str) -> list[str]:
         return lines[:insert_at] + hooks_header + hook_lines + lines[insert_at:]
     hook_block = _build_local_repo_block(repo_indent, newline)
     return lines[:repos_end] + hook_block + lines[repos_end:]
+
+
+def _expand_empty_inline_repos(lines: list[str], newline: str) -> list[str]:
+    pattern = re.compile(r"^(\s*)repos:\s*\[\]\s*(#.*)?$")
+    return _expand_empty_inline_list(lines, newline, pattern, "repos")
+
+
+def _expand_empty_inline_hooks(lines: list[str], newline: str) -> list[str]:
+    pattern = re.compile(r"^(\s*)hooks:\s*\[\]\s*(#.*)?$")
+    return _expand_empty_inline_list(lines, newline, pattern, "hooks")
+
+
+def _expand_empty_inline_list(
+    lines: list[str],
+    newline: str,
+    pattern: re.Pattern[str],
+    key: str,
+) -> list[str]:
+    for index, line in enumerate(lines):
+        match = pattern.match(line.strip("\r\n"))
+        if not match:
+            continue
+        indent = match.group(1)
+        comment = f" {match.group(2)}" if match.group(2) else ""
+        replacement = [f"{indent}{key}:{comment}{newline}"]
+        return lines[:index] + replacement + lines[index + 1 :]
+    return lines
 
 
 def _find_hook_item_start(lines: list[str], entry_index: int) -> int:
@@ -252,14 +302,53 @@ def _find_hook_item_end(lines: list[str], start_index: int, hook_indent: int) ->
 
 
 def _find_hook_block_by_id(lines: list[str], hook_id: str) -> tuple[int, int] | None:
-    pattern = re.compile(rf"^\s*-\s*id:\s*{re.escape(hook_id)}\s*(#.*)?$")
-    for index, line in enumerate(lines):
+    return _find_hook_block_by_id_in_range(lines, hook_id, start=0, end=len(lines))
+
+
+def _find_hook_block_by_id_in_range(
+    lines: list[str],
+    hook_id: str,
+    *,
+    start: int,
+    end: int,
+) -> tuple[int, int] | None:
+    pattern = re.compile(rf"^\s*-\s*id:\s*{_yaml_scalar_re(hook_id)}\s*(#.*)?$")
+    for index in range(start, end):
+        line = lines[index]
         if pattern.match(line):
             start_index = _find_hook_item_start(lines, index)
             hook_indent = _leading_spaces(lines[start_index])
-            end_index = _find_hook_item_end(lines, start_index, hook_indent)
+            end_index = min(_find_hook_item_end(lines, start_index, hook_indent), end)
             return start_index, end_index
     return None
+
+
+def _find_local_hook_block_by_id(
+    lines: list[str],
+    hook_id: str,
+) -> tuple[int, int] | None:
+    repos_index, repos_indent = _find_repos_line(lines)
+    if repos_index is None:
+        return None
+    repos_end = _find_repos_list_end(lines, repos_index, repos_indent)
+    local_repo_index, local_repo_indent = _find_local_repo(
+        lines, repos_index, repos_end
+    )
+    if local_repo_index is None:
+        return None
+    local_end = _find_repo_block_end(
+        lines, local_repo_index, local_repo_indent, repos_end
+    )
+    hooks_index, hooks_indent = _find_hooks_line(lines, local_repo_index, local_end)
+    if hooks_index is None:
+        return None
+    hooks_end = _find_hooks_list_end(lines, hooks_index, hooks_indent, local_end)
+    return _find_hook_block_by_id_in_range(
+        lines,
+        hook_id,
+        start=hooks_index + 1,
+        end=hooks_end,
+    )
 
 
 def _extract_entry_from_block(lines: list[str], start: int, end: int) -> str | None:
@@ -293,7 +382,7 @@ def _strip_quotes(value: str) -> str:
 
 
 def _pre_commit_hook_status(lines: list[str], repo_root: Path | None) -> str:
-    hook_block = _find_hook_block_by_id(lines, PRE_COMMIT_HOOK_ID)
+    hook_block = _find_local_hook_block_by_id(lines, PRE_COMMIT_HOOK_ID)
     if hook_block is None:
         return "missing"
     entry = _extract_entry_from_block(lines, hook_block[0], hook_block[1])
@@ -311,8 +400,7 @@ def _is_cmtr_pre_commit_entry(entry: str) -> bool:
 
 
 def _pre_commit_has_hook_id(lines: list[str]) -> bool:
-    pattern = re.compile(rf"^\s*-\s*id:\s*{re.escape(PRE_COMMIT_HOOK_ID)}\s*(#.*)?$")
-    return any(pattern.match(line) for line in lines)
+    return _find_local_hook_block_by_id(lines, PRE_COMMIT_HOOK_ID) is not None
 
 
 def _find_repos_line(lines: list[str]) -> tuple[int | None, int]:
@@ -367,9 +455,10 @@ def _infer_repo_indent(
 def _find_local_repo(
     lines: list[str], repos_index: int, repos_end: int
 ) -> tuple[int | None, int]:
+    pattern = re.compile(rf"^\s*-\s*repo:\s*{_yaml_scalar_re('local')}\s*(#.*)?$")
     for index in range(repos_index + 1, repos_end):
         line = lines[index]
-        if re.match(r"^\s*-\s*repo:\s*local\s*(#.*)?$", line):
+        if pattern.match(line):
             return index, _leading_spaces(line)
     return None, 0
 
@@ -426,21 +515,10 @@ def _is_blank_or_comment(line: str) -> bool:
     return not stripped or stripped.startswith("#")
 
 
-def _ensure_default_stages(lines: list[str], newline: str) -> list[str]:
-    if _has_default_stages(lines):
-        return lines
-    repos_index, _ = _find_repos_line(lines)
-    insert_at = repos_index if repos_index is not None else len(lines)
-    return (
-        lines[:insert_at]
-        + [f"default_stages: [pre-commit]{newline}", newline]
-        + lines[insert_at:]
-    )
+def _yaml_scalar_re(value: str) -> str:
+    escaped = re.escape(value)
+    return rf"(?:{escaped}|\"{escaped}\"|'{escaped}')"
 
-
-def _has_default_stages(lines: list[str]) -> bool:
-    pattern = re.compile(r"^\s*default_stages\s*:")
-    return any(pattern.match(line) for line in lines)
 
 def _git_dir(repo_root: Path) -> Path:
     output = run_git(["rev-parse", "--git-dir"], repo_root).strip()
@@ -457,24 +535,34 @@ def _is_rebase_in_progress(repo_root: Path) -> bool:
     ).exists()
 
 
-def _is_fixup_or_squash(message_path: Path) -> bool:
+def _git_comment_char(repo_root: Path) -> str:
+    try:
+        value = run_git(["config", "--get", "core.commentChar"], repo_root).strip()
+    except GitError:
+        return "#"
+    if not value or value == "auto":
+        return "#"
+    return value[0]
+
+
+def _is_fixup_or_squash(message_path: Path, comment_char: str) -> bool:
     if not message_path.exists():
         return False
     for line in message_path.read_text(encoding="utf-8").splitlines():
         stripped = line.lstrip()
-        if not stripped or stripped.startswith("#"):
+        if not stripped or stripped.startswith(comment_char):
             continue
         if stripped.startswith("fixup") or stripped.startswith("squash"):
             return True
     return False
 
 
-def _has_existing_message(message_path: Path) -> bool:
+def _has_existing_message(message_path: Path, comment_char: str) -> bool:
     if not message_path.exists():
         return False
     for line in message_path.read_text(encoding="utf-8").splitlines():
-        if line.startswith("#"):
-            break
+        if line.lstrip().startswith(comment_char):
+            continue
         if line.strip():
             return True
     return False
@@ -486,20 +574,21 @@ def _hook_script() -> str:
 
 def _hook_script_for(local_checkout: Path | None) -> str:
     if local_checkout:
-        repo_path = local_checkout.as_posix()
+        repo_path = shlex.quote(local_checkout.as_posix())
         script = f"""#!/bin/sh
 {HOOK_MARKER}
 # Generated by: cmtr --hook
 
-CMTR_REPO="{repo_path}"
+CMTR_REPO={repo_path}
+CMTR_TARGET=$(pwd)
 
 if [ -d "$CMTR_REPO" ] && [ -f "$CMTR_REPO/pyproject.toml" ]; then
-  if command -v mise >/dev/null 2>&1; then
-    (cd "$CMTR_REPO" && mise exec -- uv run cmtr prepare-commit-msg "$@")
-  elif command -v uv >/dev/null 2>&1; then
-    (cd "$CMTR_REPO" && uv run cmtr prepare-commit-msg "$@")
-  else
+  if ! command -v uv >/dev/null 2>&1; then
     echo "cmtr: uv not found; skipping commit message generation" >&2
+  elif command -v mise >/dev/null 2>&1; then
+    mise exec -C "$CMTR_REPO" -- uv run --project "$CMTR_REPO" --directory "$CMTR_TARGET" cmtr prepare-commit-msg "$@"
+  else
+    uv run --project "$CMTR_REPO" --directory "$CMTR_TARGET" cmtr prepare-commit-msg "$@"
   fi
 else
   if command -v uvx >/dev/null 2>&1; then

@@ -7,9 +7,10 @@ import os
 import shutil
 import subprocess
 import tempfile
-from typing import Any
 
+from .config import DEFAULT_CONFIG
 from .errors import CodexError
+from .message import is_usable_commit_message, sanitize_commit_message
 
 
 @dataclass(frozen=True)
@@ -20,7 +21,14 @@ class CodexStatus:
     auth_exists: bool
 
 
-DEFAULT_CODEX_MODEL = "gpt-5.2-codex"
+DEFAULT_CODEX_MODEL = DEFAULT_CONFIG.codex_model
+_TEXT_OUTPUT_RULE = (
+    "- Output ONLY the commit message text (subject line, optional body)."
+)
+_CODEX_JSON_OUTPUT_RULE = (
+    "- Write the commit message text (subject line, optional body) as the JSON string "
+    'value for key "message".'
+)
 
 
 def codex_status() -> CodexStatus:
@@ -49,6 +57,7 @@ def generate_commit_message_with_codex(
     user_prompt: str,
     model: str | None,
     api_key: str | None,
+    timeout_seconds: float | None = None,
 ) -> str:
     if not model:
         model = DEFAULT_CODEX_MODEL
@@ -67,72 +76,86 @@ def generate_commit_message_with_codex(
         "additionalProperties": False,
     }
 
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as schema_file:
-        json.dump(schema, schema_file)
-        schema_path = Path(schema_file.name)
-
-    fd, output_name = tempfile.mkstemp(prefix="cmtr_codex_")
-    os.close(fd)
-    output_path = Path(output_name)
-
-    cmd = [
-        *cmd_prefix,
-        "exec",
-        *(["--model", model] if model else []),
-        "--output-schema",
-        str(schema_path),
-        "-o",
-        str(output_path),
-        "--color",
-        "never",
-        "--sandbox",
-        "read-only",
-        "-C",
-        str(repo_root),
-        "-",
-    ]
-
-    env = os.environ.copy()
-    if api_key and not status.auth_exists:
-        env.setdefault("CODEX_API_KEY", api_key)
-    if status.auth_exists:
-        env.setdefault("CODEX_HOME", str(status.auth_path.parent))
-
+    schema_path: Path | None = None
+    output_path: Path | None = None
     try:
-        result = subprocess.run(
-            cmd,
-            input=prompt,
-            text=True,
-            capture_output=True,
-            env=env,
-        )
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", delete=False
+        ) as schema_file:
+            json.dump(schema, schema_file)
+            schema_path = Path(schema_file.name)
+
+        fd, output_name = tempfile.mkstemp(prefix="cmtr_codex_")
+        os.close(fd)
+        output_path = Path(output_name)
+
+        with tempfile.TemporaryDirectory(
+            prefix="cmtr_codex_workspace_"
+        ) as workdir_name:
+            workdir = Path(workdir_name)
+            cmd = [
+                *cmd_prefix,
+                "exec",
+                *(["--model", model] if model else []),
+                "--output-schema",
+                str(schema_path),
+                "-o",
+                str(output_path),
+                "--color",
+                "never",
+                "--sandbox",
+                "read-only",
+                "-C",
+                str(workdir),
+                "--skip-git-repo-check",
+                "--ephemeral",
+                "-",
+            ]
+
+            env = os.environ.copy()
+            if api_key and not status.auth_exists:
+                env.setdefault("CODEX_API_KEY", api_key)
+            if status.auth_exists:
+                env.setdefault("CODEX_HOME", str(status.auth_path.parent))
+
+            result = subprocess.run(
+                cmd,
+                cwd=workdir,
+                input=prompt,
+                text=True,
+                capture_output=True,
+                env=env,
+                timeout=timeout_seconds,
+            )
+
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            stdout = result.stdout.strip()
+            message = stderr or stdout or "Codex exec failed"
+            raise CodexError(message)
+
+        try:
+            output_raw = output_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise CodexError(f"Failed to read Codex output: {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        timeout = exc.timeout if exc.timeout is not None else timeout_seconds
+        suffix = f" after {timeout:g} seconds" if timeout else ""
+        raise CodexError(f"Codex exec timed out{suffix}.") from exc
     except OSError as exc:
         raise CodexError(f"Failed to run Codex CLI: {exc}") from exc
     finally:
-        try:
-            schema_path.unlink()
-        except OSError:
-            pass
+        for path in (schema_path, output_path):
+            if path is None:
+                continue
+            try:
+                path.unlink()
+            except OSError:
+                pass
 
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        stdout = result.stdout.strip()
-        message = stderr or stdout or "Codex exec failed"
-        raise CodexError(message)
-
-    try:
-        output_raw = output_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise CodexError(f"Failed to read Codex output: {exc}") from exc
-    finally:
-        try:
-            output_path.unlink()
-        except OSError:
-            pass
-
-    message = _extract_message(output_raw)
-    if not message:
-        raise CodexError("Codex output did not contain a commit message.")
+    message = sanitize_commit_message(_extract_message(output_raw))
+    if not is_usable_commit_message(message):
+        raise CodexError("Codex output contained no usable commit message.")
     return message
 
 
@@ -150,7 +173,7 @@ def _extract_message(raw: str) -> str:
 
 def _build_codex_prompt(system_prompt: str, user_prompt: str) -> str:
     parts = [
-        system_prompt.strip(),
+        _codex_system_prompt(system_prompt),
         "Use ONLY the context below. Do not run any commands. Do not infer additional changes.",
         "",
         "Context:",
@@ -159,6 +182,16 @@ def _build_codex_prompt(system_prompt: str, user_prompt: str) -> str:
         'Output ONLY JSON with key "message".',
     ]
     return "\n".join(part for part in parts if part)
+
+
+def _codex_system_prompt(system_prompt: str) -> str:
+    lines = []
+    for line in system_prompt.strip().splitlines():
+        if line.strip() == _TEXT_OUTPUT_RULE:
+            lines.append(_CODEX_JSON_OUTPUT_RULE)
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
 
 
 def _resolve_codex_command(status: CodexStatus) -> list[str] | None:

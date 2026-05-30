@@ -6,6 +6,7 @@ from openai import OpenAI
 
 from .config import Config
 from .errors import OpenAIError
+from .message import is_usable_commit_message, sanitize_commit_message
 
 
 def generate_commit_message(
@@ -19,6 +20,7 @@ def generate_commit_message(
             api_key=api_key,
             base_url=config.base_url,
             organization=config.organization,
+            project=config.project,
             timeout=config.timeout_seconds,
             max_retries=2,
         )
@@ -29,6 +31,7 @@ def generate_commit_message(
                 {"role": "user", "content": user_prompt},
             ],
             "max_output_tokens": 200,
+            "store": False,
         }
         if config.reasoning_effort:
             create_args["reasoning"] = {"effort": config.reasoning_effort}
@@ -37,19 +40,21 @@ def generate_commit_message(
         response = client.responses.create(**create_args)
     except Exception as exc:
         raise OpenAIError(f"OpenAI request failed: {exc}") from exc
+    _raise_for_incomplete_response(response)
     message = _extract_output_text(response)
     if not message:
         raise OpenAIError("OpenAI response contained no text")
-    return _sanitize_message(message)
+    message = sanitize_commit_message(message)
+    if not is_usable_commit_message(message):
+        raise OpenAIError("OpenAI response contained no usable commit message")
+    return message
 
 
 def _extract_output_text(response: Any) -> str:
-    output_text = getattr(response, "output_text", None)
+    output_text = _response_field(response, "output_text")
     if isinstance(output_text, str) and output_text.strip():
         return output_text
-    output = getattr(response, "output", None)
-    if output is None and isinstance(response, dict):
-        output = response.get("output")
+    output = _response_field(response, "output")
     if not output:
         return ""
     parts: list[str] = []
@@ -78,14 +83,17 @@ def _extract_output_text(response: Any) -> str:
     return "".join(parts).strip()
 
 
-def _sanitize_message(message: str) -> str:
-    text = message.strip()
-    if text.startswith("```") and text.endswith("```"):
-        lines = text.splitlines()
-        if len(lines) >= 2:
-            text = "\n".join(lines[1:-1]).strip()
-    if text.startswith("\"") and text.endswith("\"") and len(text) > 1:
-        text = text[1:-1].strip()
-    if text.startswith("'") and text.endswith("'") and len(text) > 1:
-        text = text[1:-1].strip()
-    return text
+def _raise_for_incomplete_response(response: Any) -> None:
+    status = _response_field(response, "status")
+    if status is None or status == "completed":
+        return
+    details = _response_field(response, "incomplete_details")
+    reason = _response_field(details, "reason")
+    suffix = f" ({reason})" if reason else ""
+    raise OpenAIError(f"OpenAI response was {status}{suffix}")
+
+
+def _response_field(value: Any, field: str) -> Any:
+    if isinstance(value, dict):
+        return value.get(field)
+    return getattr(value, field, None)

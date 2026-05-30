@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import subprocess
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from .errors import GitError, UserError
 
@@ -33,6 +33,10 @@ class DiffNumStat:
 class HooksPathEntry:
     origin: str
     path: str
+
+
+_LOG_FIELD_SEPARATOR = "\x1f"
+_LOG_RECORD_SEPARATOR = "\x1e"
 
 
 def run_git(args: Sequence[str], cwd: Path) -> str:
@@ -96,7 +100,10 @@ def get_hooks_dir(repo_root: Path, *, use_global: bool = False) -> Path:
         )
 
     output = run_git(["rev-parse", "--git-path", "hooks"], repo_root)
-    return Path(output.strip())
+    hooks_dir = Path(output.strip())
+    if not hooks_dir.is_absolute():
+        hooks_dir = repo_root / hooks_dir
+    return hooks_dir
 
 
 def parse_hooks_path_entries(output: str) -> list[HooksPathEntry]:
@@ -170,18 +177,27 @@ def _same_path(left: Path, right: Path) -> bool:
     return left.resolve(strict=False) == right.resolve(strict=False)
 
 
-def get_staged_files(repo_root: Path) -> list[str]:
-    output = run_git(["diff", "--cached", "--name-only", "-z"], repo_root)
+def get_staged_files(repo_root: Path, paths: Sequence[str] | None = None) -> list[str]:
+    args = ["diff", "--cached", "--name-only", "-z"]
+    if paths:
+        args.extend(["--", *paths])
+    output = run_git(args, repo_root)
     entries = [entry for entry in output.split("\0") if entry]
     return entries
 
 
-def get_name_status(repo_root: Path) -> str:
-    return run_git(["diff", "--cached", "--name-status"], repo_root).strip()
+def get_name_status(repo_root: Path, paths: Sequence[str] | None = None) -> str:
+    args = ["diff", "--cached", "--name-status"]
+    if paths:
+        args.extend(["--", *paths])
+    return run_git(args, repo_root).strip()
 
 
-def get_diff_stat(repo_root: Path) -> str:
-    return run_git(["diff", "--cached", "--stat"], repo_root).strip()
+def get_diff_stat(repo_root: Path, paths: Sequence[str] | None = None) -> str:
+    args = ["diff", "--cached", "--stat"]
+    if paths:
+        args.extend(["--", *paths])
+    return run_git(args, repo_root).strip()
 
 
 def get_diff_patch(repo_root: Path, paths: Sequence[str] | None = None) -> str:
@@ -191,8 +207,40 @@ def get_diff_patch(repo_root: Path, paths: Sequence[str] | None = None) -> str:
     return run_git(args, repo_root)
 
 
-def get_diff_numstat(repo_root: Path) -> list[DiffNumStat]:
-    output = run_git(["diff", "--cached", "--numstat", "-z"], repo_root)
+def has_unstaged_changes(repo_root: Path, paths: Sequence[str]) -> bool:
+    args = ["diff", "--quiet", "--", *paths]
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        return False
+    if result.returncode == 1:
+        return True
+    stderr = result.stderr.strip()
+    stdout = result.stdout.strip()
+    raise GitError(stderr or stdout or "Unknown git error")
+
+
+def get_unmerged_paths(
+    repo_root: Path, paths: Sequence[str] | None = None
+) -> list[str]:
+    args = ["diff", "--name-only", "--diff-filter=U", "-z"]
+    if paths:
+        args.extend(["--", *paths])
+    output = run_git(args, repo_root)
+    return [entry for entry in output.split("\0") if entry]
+
+
+def get_diff_numstat(
+    repo_root: Path, paths: Sequence[str] | None = None
+) -> list[DiffNumStat]:
+    args = ["diff", "--cached", "--numstat", "-z"]
+    if paths:
+        args.extend(["--", *paths])
+    output = run_git(args, repo_root)
     if not output:
         return []
     parts = output.split("\0")
@@ -203,7 +251,7 @@ def get_diff_numstat(repo_root: Path) -> list[DiffNumStat]:
         index += 1
         if not header:
             continue
-        fields = header.split("\t")
+        fields = header.split("\t", 2)
         if len(fields) < 3:
             continue
         added_raw, deleted_raw, path = fields[0], fields[1], fields[2]
@@ -245,25 +293,23 @@ def gather_log_context(
 ) -> list[LogContext]:
     if max_paths <= 0 or max_entries <= 0:
         return []
-    target_entries = min(max_entries, 10)
-    if target_entries <= 0:
-        return []
     changed_lines = _build_changed_line_map(repo_root, staged_files)
     log_paths = _select_log_paths(staged_files, max_paths, changed_lines)
     contexts: list[LogContext] = []
     seen: set[tuple[str, str]] = set()
-    primary_entries: list[CommitMessage] = []
-    if log_paths:
-        primary_path = log_paths[0]
-        primary_entries = _get_log_entries(repo_root, primary_path, target_entries)
-        primary_entries = _dedupe_entries(primary_entries, seen)
-        if primary_entries:
-            contexts.append(LogContext(path=primary_path, entries=primary_entries))
-    if len(primary_entries) < target_entries:
-        remaining = target_entries - len(primary_entries)
+    total_entries = 0
+    for path in log_paths:
+        entries = _get_log_entries(repo_root, path, max_entries)
+        entries = _dedupe_entries(entries, seen)
+        if not entries:
+            continue
+        total_entries += len(entries)
+        contexts.append(LogContext(path=path, entries=entries))
+    if not contexts or total_entries < max_entries:
+        remaining = max_entries - total_entries
         repo_entries = _get_log_entries(repo_root, None, max_entries)
         repo_entries = _dedupe_entries(repo_entries, seen)
-        if remaining < len(repo_entries):
+        if remaining > 0 and remaining < len(repo_entries):
             repo_entries = repo_entries[:remaining]
         if repo_entries:
             contexts.append(LogContext(path="repository", entries=repo_entries))
@@ -278,7 +324,7 @@ def _get_log_entries(
     args = [
         "log",
         f"--max-count={max_entries}",
-        "--pretty=format:%s%n%b%n----END----",
+        "--pretty=format:%s%x1f%b%x1e",
     ]
     if path:
         args.extend(["--", path])
@@ -287,13 +333,15 @@ def _get_log_entries(
     except GitError:
         return []
     entries: list[CommitMessage] = []
-    for chunk in output.split("----END----"):
+    for chunk in output.split(_LOG_RECORD_SEPARATOR):
         text = chunk.strip("\n")
         if not text.strip():
             continue
-        lines = text.splitlines()
-        subject = lines[0].strip()
-        body = "\n".join(line.rstrip() for line in lines[1:]).strip()
+        subject, separator, body = text.partition(_LOG_FIELD_SEPARATOR)
+        if not separator:
+            continue
+        subject = subject.strip()
+        body = "\n".join(line.rstrip() for line in body.splitlines()).strip()
         entries.append(CommitMessage(subject=subject, body=body))
     return entries
 
@@ -322,8 +370,7 @@ def _select_log_paths(
     staged_files = [file for file in staged_files if file]
     shared = _common_prefix(staged_files)
     if not shared:
-        fallback = _best_changed_path(staged_files, changed_lines)
-        return [fallback] if fallback else []
+        return _best_changed_paths(staged_files, changed_lines, max_paths)
     return [shared]
 
 
@@ -344,16 +391,6 @@ def _common_prefix(paths: Sequence[str]) -> str:
         else:
             break
     return "/".join(prefix)
-
-
-def _is_prefix(prefix: str, path: str) -> bool:
-    prefix_parts = _split_parts(prefix)
-    path_parts = _split_parts(path)
-    if not prefix_parts:
-        return False
-    if len(prefix_parts) > len(path_parts):
-        return False
-    return path_parts[: len(prefix_parts)] == prefix_parts
 
 
 def _build_changed_line_map(
@@ -378,12 +415,13 @@ def _build_changed_line_map(
     return changed
 
 
-def _best_changed_path(
+def _best_changed_paths(
     staged_files: Sequence[str],
     changed_lines: dict[str, int],
-) -> str:
-    if not staged_files:
-        return ""
+    max_paths: int,
+) -> list[str]:
+    if not staged_files or max_paths <= 0:
+        return []
     scores: dict[str, int] = {}
     for file in staged_files:
         if not file:
@@ -392,9 +430,9 @@ def _best_changed_path(
         key = file if parent == "." else parent
         scores[key] = scores.get(key, 0) + changed_lines.get(file, 0)
     if not scores:
-        return ""
+        return []
     ordered = sorted(
         scores.items(),
         key=lambda item: (-item[1], -len(_split_parts(item[0])), item[0]),
     )
-    return ordered[0][0]
+    return [path for path, _score in ordered[:max_paths]]

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import AbstractContextManager
-from typing import Callable
 
 from rich.console import Console
 from rich.status import Status

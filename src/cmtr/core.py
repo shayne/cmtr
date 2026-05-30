@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import ceil
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 from .config import Config
 from .errors import CodexError, UserError
 from .git import (
+    DiffNumStat,
     LogContext,
     gather_log_context,
     get_diff_patch,
@@ -16,11 +17,11 @@ from .git import (
     get_name_status,
     get_repo_root,
     get_staged_files,
+    get_unmerged_paths,
+    has_unstaged_changes,
     has_commits,
 )
 from .codex_client import (
-    DEFAULT_CODEX_MODEL,
-    codex_status,
     generate_commit_message_with_codex,
     is_codex_available,
 )
@@ -66,21 +67,39 @@ _MAX_EXCLUDED_LIST = 50
 _TOKEN_CHARS = 4
 
 
-def collect_context(repo_root: Path, config: Config) -> CommitContext:
-    staged_files = get_staged_files(repo_root)
+def collect_context(
+    repo_root: Path,
+    config: Config,
+    pathspecs: Sequence[str] | None = None,
+) -> CommitContext:
+    unmerged_paths = get_unmerged_paths(repo_root, paths=pathspecs)
+    if unmerged_paths:
+        path_list = ", ".join(unmerged_paths[:5])
+        suffix = "..." if len(unmerged_paths) > 5 else ""
+        raise UserError(
+            f"Cannot generate a commit message with unmerged paths: {path_list}{suffix}"
+        )
+    if pathspecs and has_unstaged_changes(repo_root, pathspecs):
+        raise UserError(
+            "Pathspec commits with unstaged changes are not supported. "
+            "Stage or discard unstaged changes for the selected paths before running cmtr."
+        )
+    staged_files = get_staged_files(repo_root, paths=pathspecs)
     if not staged_files:
+        if pathspecs:
+            raise UserError(
+                "No staged changes found for the provided pathspec. "
+                "Stage matching files before running cmtr."
+            )
         raise UserError("No staged changes found. Stage files before running cmtr.")
-    name_status = get_name_status(repo_root)
-    diff_stat = get_diff_stat(repo_root)
+    name_status = get_name_status(repo_root, paths=pathspecs)
+    diff_stat = get_diff_stat(repo_root, paths=pathspecs)
     diff_patch, diff_filtered, diff_truncated = _build_filtered_diff(
-        repo_root, config
+        repo_root, config, pathspecs=pathspecs
     )
     has_commit_history = has_commits(repo_root)
-    log_paths = staged_files
-    if diff_filtered:
-        log_paths = [
-            path for path in staged_files if not _is_hard_excluded(path)
-        ] or staged_files
+    diff_entries = get_diff_numstat(repo_root, paths=pathspecs)
+    log_paths = _log_paths_for_context(staged_files, diff_entries, diff_filtered)
     if has_commit_history:
         log_contexts = gather_log_context(
             repo_root,
@@ -109,6 +128,17 @@ def generate_message(
     api_key: str | None,
 ) -> str:
     context = collect_context(repo_root, config)
+    system_prompt, user_prompt = build_prompts(context, config)
+    return generate_message_from_prompts(
+        repo_root=repo_root,
+        config=config,
+        api_key=api_key,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+    )
+
+
+def build_prompts(context: CommitContext, config: Config) -> tuple[str, str]:
     prompt_context = PromptContext(
         staged_files=context.staged_files,
         name_status=context.name_status,
@@ -124,21 +154,42 @@ def generate_message(
     user_prompt = build_user_prompt(prompt_context)
     if not user_prompt:
         raise UserError("Unable to build prompt from staged changes.")
+    return system_prompt, user_prompt
+
+
+def generate_message_from_prompts(
+    repo_root: Path,
+    config: Config,
+    api_key: str | None,
+    system_prompt: str,
+    user_prompt: str,
+    on_backend_status: Callable[[str], None] | None = None,
+) -> str:
+    if not user_prompt:
+        raise UserError("Unable to build prompt from staged changes.")
     backend = select_backend(config, api_key)
+    if on_backend_status:
+        on_backend_status(backend)
     if backend == "codex":
         try:
             return generate_commit_message_with_codex(
                 repo_root=repo_root,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                model=DEFAULT_CODEX_MODEL,
+                model=config.codex_model,
                 api_key=api_key,
+                timeout_seconds=config.timeout_seconds,
             )
         except CodexError as exc:
-            if config.prefer_codex:
-                raise UserError(
-                    f"Codex failed: {exc}. Install/login to Codex."
-                ) from exc
+            if api_key:
+                if on_backend_status:
+                    on_backend_status("openai_fallback")
+                return generate_commit_message(
+                    config=config,
+                    api_key=api_key,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                )
             raise UserError(
                 f"Codex failed: {exc}. Install/login to Codex or set OPENAI_API_KEY."
             ) from exc
@@ -158,8 +209,11 @@ def resolve_repo_root(cwd: Path) -> Path:
 
 def select_backend(config: Config, api_key: str | None) -> str:
     if config.prefer_codex:
-        _ensure_codex_available(prefer_codex=True)
-        return "codex"
+        if is_codex_available():
+            return "codex"
+        if api_key:
+            return "openai"
+        _raise_codex_unavailable()
     if api_key:
         return "openai"
     if is_codex_available():
@@ -170,18 +224,18 @@ def select_backend(config: Config, api_key: str | None) -> str:
 
 def describe_auth_mode(config: Config, api_key: str | None) -> tuple[str, str | None]:
     if config.prefer_codex:
-        status = codex_status()
-        if status.codex_path is None and status.npx_path is None:
+        if is_codex_available():
+            return ("codex", None)
+        if api_key:
             return (
-                "error",
-                "Codex is not installed. Install Codex or run `npx @openai/codex@latest`.",
+                "openai",
+                "Codex is preferred but unavailable; using OPENAI_API_KEY.",
             )
-        if not status.auth_exists:
-            return (
-                "error",
-                "Codex auth not found. Run `codex` or `npx @openai/codex@latest` to sign in.",
-            )
-        return ("codex", None)
+        return (
+            "error",
+            "OPENAI_API_KEY is not set and Codex is not available. "
+            "Set OPENAI_API_KEY or run `npx @openai/codex@latest` to sign in.",
+        )
     if api_key:
         return ("openai", None)
     if is_codex_available():
@@ -198,21 +252,6 @@ def _raise_codex_unavailable() -> None:
         "OPENAI_API_KEY is not set and Codex is not available. "
         "Set OPENAI_API_KEY or run `npx @openai/codex@latest` to sign in."
     )
-
-
-def _ensure_codex_available(*, prefer_codex: bool) -> None:
-    status = codex_status()
-    if status.codex_path is None and status.npx_path is None:
-        raise UserError(
-            "Codex is not installed. Install Codex or run `npx @openai/codex@latest`."
-        )
-    if not status.auth_exists:
-        message = (
-            "Codex auth not found. Run `codex` or `npx @openai/codex@latest` to sign in."
-        )
-        if prefer_codex:
-            raise UserError(message)
-        raise UserError(message)
 
 
 def _truncate_diff(diff: str, max_bytes: int, max_lines: int) -> tuple[str, bool]:
@@ -242,11 +281,13 @@ def _truncate_bytes(text: str, max_bytes: int) -> str:
 
 
 def _build_filtered_diff(
-    repo_root: Path, config: Config
+    repo_root: Path,
+    config: Config,
+    pathspecs: Sequence[str] | None = None,
 ) -> tuple[str, bool, bool]:
-    entries = get_diff_numstat(repo_root)
+    entries = get_diff_numstat(repo_root, paths=pathspecs)
     if not entries:
-        diff_patch_raw = get_diff_patch(repo_root)
+        diff_patch_raw = get_diff_patch(repo_root, paths=pathspecs)
         diff_patch, diff_truncated = _truncate_diff(
             diff_patch_raw,
             max_bytes=config.max_diff_bytes,
@@ -270,18 +311,14 @@ def _build_filtered_diff(
     if config.max_patch_lines > 0 and total_changed_lines > config.max_patch_lines:
         large_diff = True
     per_file_line_limit = (
-        max(200, config.max_patch_lines // 2)
-        if config.max_patch_lines > 0
-        else 200
+        max(200, config.max_patch_lines // 2) if config.max_patch_lines > 0 else 200
     )
     if large_diff:
         filtered = []
         for entry in candidates:
             changed_lines = (entry.added or 0) + (entry.deleted or 0)
             if changed_lines >= per_file_line_limit:
-                excluded.append(
-                    (entry.path, f"large diff ({changed_lines} lines)")
-                )
+                excluded.append((entry.path, f"large diff ({changed_lines} lines)"))
                 continue
             filtered.append(entry)
         candidates = filtered
@@ -291,7 +328,9 @@ def _build_filtered_diff(
     used_tokens = 0
     diff_was_filtered = bool(excluded)
     for entry in sorted(candidates, key=_diff_entry_sort_key):
-        patch = get_diff_patch(repo_root, paths=[entry.path]).rstrip("\n")
+        patch = get_diff_patch(repo_root, paths=_diff_paths_for_entry(entry)).rstrip(
+            "\n"
+        )
         if not patch.strip():
             continue
         patch_lines = len(patch.splitlines())
@@ -307,9 +346,7 @@ def _build_filtered_diff(
             config,
         ):
             changed_lines = (entry.added or 0) + (entry.deleted or 0)
-            excluded.append(
-                (entry.path, f"diff budget ({changed_lines} lines)")
-            )
+            excluded.append((entry.path, f"diff budget ({changed_lines} lines)"))
             diff_was_filtered = True
             continue
         diff_chunks.append(patch)
@@ -333,6 +370,42 @@ def _build_filtered_diff(
 
 def _is_hard_excluded(path: str) -> bool:
     return Path(path).name in _HARD_EXCLUDED_BASENAMES
+
+
+def _log_paths_for_context(
+    staged_files: Sequence[str],
+    diff_entries: Sequence[DiffNumStat],
+    diff_filtered: bool,
+) -> list[str]:
+    paths = [path for path in staged_files if path]
+    staged_set = set(paths)
+    for entry in diff_entries:
+        if entry.path in staged_set and entry.path_before:
+            paths.append(entry.path_before)
+    if diff_filtered:
+        paths = [path for path in paths if not _is_hard_excluded(path)] or list(
+            staged_files
+        )
+    return _dedupe_paths(paths)
+
+
+def _dedupe_paths(paths: Sequence[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for path in paths:
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        unique.append(path)
+    return unique
+
+
+def _diff_paths_for_entry(entry: object) -> list[str]:
+    path = getattr(entry, "path", "")
+    path_before = getattr(entry, "path_before", None)
+    if path_before:
+        return [path_before, path]
+    return [path]
 
 
 def _estimate_tokens(text: str) -> int:

@@ -12,3 +12,23 @@ run = "uv run cmtr"
 [tasks.typecheck]
 description = "Type check with ty"
 run = "uv run ty check"
+
+[tasks.lint]
+description = "Lint with Ruff"
+run = "uv run ruff check ."
+
+[tasks.format]
+description = "Format with Ruff"
+run = "uv run ruff format ."
+
+[tasks.format-check]
+description = "Check formatting with Ruff"
+run = "uv run ruff format --check ."
+
+[tasks.test]
+description = "Run tests"
+run = "uv run pytest"
+
+[tasks.build]
+description = "Build distributions"
+run = "uv build"

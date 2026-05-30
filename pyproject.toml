@@ -6,14 +6,14 @@ readme = "README.md"
 authors = [
     { name = "Shayne Sweeney", email = "79330+shayne@users.noreply.github.com" }
 ]
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 keywords = ["git", "commit", "cli", "openai", "automation"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.12",
@@ -29,8 +29,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "ty>=0.0.7",
     "pytest>=8.0.0",
+    "ruff>=0.15.15",
+    "ty>=0.0.7",
 ]
 
 [project.scripts]
@@ -44,6 +45,9 @@ Issues = "https://github.com/shayne/cmtr/issues"
 [tool.ty.src]
 include = ["src"]
 
+[tool.ruff]
+target-version = "py312"
+
 [build-system]
-requires = ["uv_build>=0.9.18,<0.10.0"]
+requires = ["uv_build>=0.9.18,<0.12.0"]
 build-backend = "uv_build"
