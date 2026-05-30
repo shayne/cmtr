@@ -104,6 +104,40 @@ def test_codex_runs_from_scratch_directory_not_repo_root(
     assert captured["cwd"] == captured["workspace"]
 
 
+def test_codex_reports_undecodable_output_file(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        codex_client,
+        "codex_status",
+        lambda: codex_client.CodexStatus(
+            codex_path=Path("/usr/local/bin/codex"),
+            npx_path=None,
+            auth_path=tmp_path / "auth.json",
+            auth_exists=True,
+        ),
+    )
+
+    def fake_run(cmd: list[str], **kwargs):
+        output_path = Path(cmd[cmd.index("-o") + 1])
+        output_path.write_bytes(b"\xff\xfe\n")
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(codex_client.subprocess, "run", fake_run)
+
+    with pytest.raises(CodexError, match="Failed to read Codex output"):
+        codex_client.generate_commit_message_with_codex(
+            repo_root=tmp_path,
+            system_prompt="system",
+            user_prompt="user",
+            model="gpt-test",
+            api_key=None,
+        )
+
+
 def test_codex_allows_scratch_directory_outside_git_repo(
     tmp_path: Path, monkeypatch
 ) -> None:

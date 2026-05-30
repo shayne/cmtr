@@ -136,7 +136,7 @@ def generate_commit_message_with_codex(
 
         try:
             output_raw = output_path.read_text(encoding="utf-8")
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError) as exc:
             raise CodexError(f"Failed to read Codex output: {exc}") from exc
     except subprocess.TimeoutExpired as exc:
         timeout = exc.timeout if exc.timeout is not None else timeout_seconds
