@@ -297,6 +297,24 @@ def test_append_failure_comment_comments_every_error_line(tmp_path: Path) -> Non
     assert "\nsecond line\n" not in text
 
 
+def test_append_failure_comment_inserts_before_scissors(tmp_path: Path) -> None:
+    message_path = tmp_path / "COMMIT_EDITMSG"
+    message_path.write_text(
+        """# Please enter a message
+# ------------------------ >8 ------------------------
+diff --git a/file.txt b/file.txt
+""",
+        encoding="utf-8",
+    )
+
+    append_failure_comment(message_path, "backend failed")
+
+    text = message_path.read_text(encoding="utf-8")
+    assert text.index("# cmtr failed: backend failed") < text.index(
+        "# ------------------------ >8 ------------------------"
+    )
+
+
 def test_prepare_commit_msg_failure_respects_configured_comment_char(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -347,6 +365,46 @@ def test_prepare_commit_msg_uses_template_source_when_template_is_empty(
     exit_code = run_prepare_commit_msg(
         message_path=message_path,
         source="template",
+        sha=None,
+        repo_root=tmp_path,
+        config=DEFAULT_CONFIG,
+        api_key=None,
+    )
+
+    assert exit_code == 0
+    assert message_path.read_text(encoding="utf-8").startswith("feat: generated\n\n")
+
+
+def test_prepare_commit_msg_ignores_verbose_diff_below_scissors(
+    tmp_path: Path, monkeypatch
+) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    message_path = tmp_path / "COMMIT_EDITMSG"
+    message_path.write_text(
+        """# Please enter the commit message for your changes.
+#
+# ------------------------ >8 ------------------------
+# Do not modify or remove the line above.
+# Everything below it will be ignored.
+diff --git a/file.txt b/file.txt
+index df967b9..5ea2ed4 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1 +1 @@
+-base
++changed
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "cmtr.hook.generate_message",
+        lambda repo_root, config, api_key: "feat: generated",
+    )
+
+    exit_code = run_prepare_commit_msg(
+        message_path=message_path,
+        source=None,
         sha=None,
         repo_root=tmp_path,
         config=DEFAULT_CONFIG,

@@ -17,6 +17,7 @@ PRE_COMMIT_CONFIG_NAMES = (".pre-commit-config.yaml", ".pre-commit-config.yml")
 PRE_COMMIT_HOOK_ID = "prepare-commit-msg"
 PRE_COMMIT_INLINE_ENTRY = "uvx cmtr@latest prepare-commit-msg"
 PRE_COMMIT_SCRIPT_ENTRY = "scripts/prepare-commit-msg"
+_SCISSORS_RE = re.compile(r"^-+\s*>8\s*-+$")
 
 
 def detect_pre_commit_config(repo_root: Path) -> Path | None:
@@ -135,11 +136,26 @@ def append_failure_comment(path: Path, error: str, *, comment_char: str = "#") -
         existing = path.read_text(encoding="utf-8")
     if existing and not existing.endswith("\n"):
         existing += "\n"
-    path.write_text(existing + comment, encoding="utf-8")
+    path.write_text(
+        _insert_comment_before_scissors(existing, comment, comment_char),
+        encoding="utf-8",
+    )
 
 
 def append_failure_comment_for_repo(path: Path, error: str, repo_root: Path) -> None:
     append_failure_comment(path, error, comment_char=_git_comment_char(repo_root))
+
+
+def _insert_comment_before_scissors(
+    existing: str,
+    comment: str,
+    comment_char: str,
+) -> str:
+    lines = existing.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        if _is_scissors_line(line, comment_char):
+            return "".join([*lines[:index], comment, *lines[index:]])
+    return existing + comment
 
 
 def _is_our_hook(path: Path) -> bool:
@@ -574,7 +590,7 @@ def _git_comment_char(repo_root: Path) -> str:
 def _is_fixup_or_squash(message_path: Path, comment_char: str) -> bool:
     if not message_path.exists():
         return False
-    for line in message_path.read_text(encoding="utf-8").splitlines():
+    for line in _message_lines_before_scissors(message_path, comment_char):
         stripped = line.lstrip()
         if not stripped or stripped.startswith(comment_char):
             continue
@@ -586,12 +602,31 @@ def _is_fixup_or_squash(message_path: Path, comment_char: str) -> bool:
 def _has_existing_message(message_path: Path, comment_char: str) -> bool:
     if not message_path.exists():
         return False
-    for line in message_path.read_text(encoding="utf-8").splitlines():
+    for line in _message_lines_before_scissors(message_path, comment_char):
         if line.lstrip().startswith(comment_char):
             continue
         if line.strip():
             return True
     return False
+
+
+def _message_lines_before_scissors(
+    message_path: Path,
+    comment_char: str,
+) -> list[str]:
+    lines = message_path.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if _is_scissors_line(line, comment_char):
+            return lines[:index]
+    return lines
+
+
+def _is_scissors_line(line: str, comment_char: str) -> bool:
+    comment_char = comment_char[:1] or "#"
+    stripped = line.lstrip()
+    if not stripped.startswith(comment_char):
+        return False
+    return _SCISSORS_RE.match(stripped[len(comment_char) :].strip()) is not None
 
 
 def _hook_script() -> str:
