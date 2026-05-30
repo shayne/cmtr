@@ -1,12 +1,42 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from openai import OpenAI
 
 from .config import Config
 from .errors import OpenAIError
-from .message import is_usable_commit_message, sanitize_commit_message
+from .message import is_usable_commit_message
+
+
+_TEXT_OUTPUT_RULE = (
+    "- Output ONLY the commit message text (subject line, optional body)."
+)
+_STRUCTURED_OUTPUT_RULE = (
+    "- Write the commit message text (subject line, optional body) as the JSON "
+    'string value for key "message".'
+)
+_COMMIT_MESSAGE_TEXT_FORMAT: dict[str, Any] = {
+    "type": "json_schema",
+    "name": "commit_message",
+    "description": (
+        "A generated Git commit message. The message value must contain only the "
+        "commit message subject and optional body, with no surrounding prose."
+    ),
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "message": {
+                "type": "string",
+                "description": "The commit message subject and optional body.",
+            }
+        },
+        "required": ["message"],
+        "additionalProperties": False,
+    },
+}
 
 
 def generate_commit_message(
@@ -27,27 +57,58 @@ def generate_commit_message(
         create_args: dict[str, Any] = {
             "model": config.model,
             "input": [
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": _structured_system_prompt(system_prompt)},
                 {"role": "user", "content": user_prompt},
             ],
             "max_output_tokens": 200,
             "store": False,
+            "text": _text_config(config),
         }
         if config.reasoning_effort:
             create_args["reasoning"] = {"effort": config.reasoning_effort}
-        if config.text_verbosity:
-            create_args["text"] = {"verbosity": config.text_verbosity}
         response = client.responses.create(**create_args)
     except Exception as exc:
         raise OpenAIError(f"OpenAI request failed: {exc}") from exc
     _raise_for_incomplete_response(response)
-    message = _extract_output_text(response)
-    if not message:
+    output_text = _extract_output_text(response)
+    if not output_text:
         raise OpenAIError("OpenAI response contained no text")
-    message = sanitize_commit_message(message)
+    message = _extract_structured_message(output_text)
     if not is_usable_commit_message(message):
         raise OpenAIError("OpenAI response contained no usable commit message")
     return message
+
+
+def _text_config(config: Config) -> dict[str, Any]:
+    text: dict[str, Any] = {"format": _COMMIT_MESSAGE_TEXT_FORMAT}
+    if config.text_verbosity:
+        text["verbosity"] = config.text_verbosity
+    return text
+
+
+def _structured_system_prompt(system_prompt: str) -> str:
+    lines = []
+    for line in system_prompt.strip().splitlines():
+        if line.strip() == _TEXT_OUTPUT_RULE:
+            lines.append(_STRUCTURED_OUTPUT_RULE)
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def _extract_structured_message(raw: str) -> str:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise OpenAIError(
+            "OpenAI response contained invalid structured output"
+        ) from exc
+    if not isinstance(data, dict):
+        raise OpenAIError("OpenAI response contained invalid structured output")
+    message = data.get("message")
+    if not isinstance(message, str) or not message.strip():
+        raise OpenAIError("OpenAI response contained no structured commit message")
+    return message.strip()
 
 
 def _extract_output_text(response: Any) -> str:

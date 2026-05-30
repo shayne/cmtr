@@ -320,7 +320,9 @@ def test_codex_timeout_raises_codex_error(tmp_path: Path, monkeypatch) -> None:
         )
 
 
-def test_codex_message_strips_markdown_fence(tmp_path: Path, monkeypatch) -> None:
+def test_codex_rejects_markdown_fence_inside_structured_message(
+    tmp_path: Path, monkeypatch
+) -> None:
     monkeypatch.setattr(
         codex_client,
         "codex_status",
@@ -347,18 +349,17 @@ def test_codex_message_strips_markdown_fence(tmp_path: Path, monkeypatch) -> Non
 
     monkeypatch.setattr(codex_client.subprocess, "run", fake_run)
 
-    message = codex_client.generate_commit_message_with_codex(
-        repo_root=tmp_path,
-        system_prompt="system",
-        user_prompt="user",
-        model="gpt-test",
-        api_key=None,
-    )
+    with pytest.raises(CodexError, match="no usable commit message"):
+        codex_client.generate_commit_message_with_codex(
+            repo_root=tmp_path,
+            system_prompt="system",
+            user_prompt="user",
+            model="gpt-test",
+            api_key=None,
+        )
 
-    assert message == "feat: add thing"
 
-
-def test_codex_message_rejects_empty_sanitized_output(
+def test_codex_message_rejects_empty_structured_message(
     tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.setattr(

@@ -72,14 +72,18 @@ Pathspecs passed after `--` are supported and limit the prompt context to those
 staged paths. They are interpreted relative to the current directory, like
 `git commit`. If those paths also have unstaged edits, cmtr stops instead of
 generating a message from stale staged context.
-Generated messages are cleaned and validated before use; obvious prompt leaks,
-diff echoes, conflict markers, placeholders, and comment-only output are rejected.
+AI backends are asked to return structured JSON with a single `message` string.
+cmtr validates that string before use; obvious prompt leaks, diff echoes,
+conflict markers, placeholders, malformed body spacing, and comment-only output
+are rejected instead of being rewritten with heuristic cleanup.
 
 ## How it builds context
 
 - Uses staged files (`git diff --cached`) for the actual changes.
 - Finds shared paths and samples recent `git log` messages on those paths to learn the repo's style.
 - For unrelated staged files, samples up to `max_log_paths` high-signal paths instead of relying on only one fallback path.
+- Requests structured output from the model so the generated commit message is
+  returned as data, not prose wrapped around a suggestion.
 - Codex mode runs from a scratch directory and receives only the generated prompt
   context, not live access to the target checkout.
 

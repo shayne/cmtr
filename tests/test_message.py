@@ -1,183 +1,8 @@
-from cmtr.message import is_usable_commit_message, sanitize_commit_message
-
-
-def test_sanitize_commit_message_removes_label_line() -> None:
-    assert (
-        sanitize_commit_message("Commit message:\nfeat: add thing") == "feat: add thing"
-    )
-
-
-def test_sanitize_commit_message_removes_inline_label() -> None:
-    assert (
-        sanitize_commit_message("Commit message: feat: add thing") == "feat: add thing"
-    )
-
-
-def test_sanitize_commit_message_removes_suggested_label() -> None:
-    assert (
-        sanitize_commit_message("Suggested commit message: feat: add thing")
-        == "feat: add thing"
-    )
-
-
-def test_sanitize_commit_message_removes_subject_and_body_labels() -> None:
-    assert (
-        sanitize_commit_message("Subject: feat: add thing\n\nBody:\nExplain why.")
-        == "feat: add thing\n\nExplain why."
-    )
-
-
-def test_sanitize_commit_message_removes_inline_body_label() -> None:
-    assert (
-        sanitize_commit_message("Subject: feat: add thing\n\nBody: Explain why.")
-        == "feat: add thing\n\nExplain why."
-    )
-
-
-def test_sanitize_commit_message_inserts_separator_before_body_label() -> None:
-    assert (
-        sanitize_commit_message("Subject: feat: add thing\nBody:\nExplain why.")
-        == "feat: add thing\n\nExplain why."
-    )
-
-
-def test_sanitize_commit_message_inserts_separator_before_inline_body_label() -> None:
-    assert (
-        sanitize_commit_message("Subject: feat: add thing\nDescription: Explain why.")
-        == "feat: add thing\n\nExplain why."
-    )
-
-
-def test_sanitize_commit_message_removes_assistant_preamble() -> None:
-    assert (
-        sanitize_commit_message("Here is the commit message:\n\nfeat: add thing")
-        == "feat: add thing"
-    )
-
-
-def test_sanitize_commit_message_removes_labels_after_preamble() -> None:
-    assert (
-        sanitize_commit_message(
-            "Here is the commit message:\n\n"
-            "Subject: feat: add thing\n\n"
-            "Body:\n"
-            "Explain why."
-        )
-        == "feat: add thing\n\nExplain why."
-    )
-
-
-def test_sanitize_commit_message_removes_inline_assistant_preamble() -> None:
-    assert (
-        sanitize_commit_message("Sure, here's the commit message: feat: add thing")
-        == "feat: add thing"
-    )
-    assert (
-        sanitize_commit_message("The commit message would be: feat: add thing")
-        == "feat: add thing"
-    )
-    assert (
-        sanitize_commit_message("The commit message should be: feat: add thing")
-        == "feat: add thing"
-    )
-
-
-def test_sanitize_commit_message_removes_inline_recommendation_preamble() -> None:
-    assert sanitize_commit_message("I would use: feat: add thing") == "feat: add thing"
-
-
-def test_sanitize_commit_message_removes_recommendation_wrappers() -> None:
-    assert (
-        sanitize_commit_message("Use this commit message: feat: add thing")
-        == "feat: add thing"
-    )
-    assert (
-        sanitize_commit_message("Recommended commit message: feat: add thing")
-        == "feat: add thing"
-    )
-
-
-def test_sanitize_commit_message_removes_suggestion_wrappers() -> None:
-    assert sanitize_commit_message("Here you go: feat: add thing") == "feat: add thing"
-    assert (
-        sanitize_commit_message("Here's my suggestion: feat: add thing")
-        == "feat: add thing"
-    )
-    assert sanitize_commit_message("I'd suggest: feat: add thing") == "feat: add thing"
-    assert sanitize_commit_message("I suggest: feat: add thing") == "feat: add thing"
-
-
-def test_sanitize_commit_message_removes_recommendation_preamble() -> None:
-    assert sanitize_commit_message("I recommend: feat: add thing") == "feat: add thing"
-    assert (
-        sanitize_commit_message("I would recommend: feat: add thing")
-        == "feat: add thing"
-    )
-    assert (
-        sanitize_commit_message(
-            "I recommend the following commit message:\n\nfeat: add thing"
-        )
-        == "feat: add thing"
-    )
-    assert (
-        sanitize_commit_message(
-            "I would recommend the following commit message:\n\nfeat: add thing"
-        )
-        == "feat: add thing"
-    )
-
-
-def test_sanitize_commit_message_removes_preamble_then_fence() -> None:
-    assert (
-        sanitize_commit_message(
-            "Here is the commit message:\n\n```gitcommit\nfeat: add thing\n```"
-        )
-        == "feat: add thing"
-    )
-
-
-def test_sanitize_commit_message_extracts_json_message() -> None:
-    assert (
-        sanitize_commit_message('{"message": "feat: add thing"}') == "feat: add thing"
-    )
-
-
-def test_sanitize_commit_message_extracts_inline_code_wrapped_json_message() -> None:
-    assert (
-        sanitize_commit_message('`{"message": "feat: add thing"}`') == "feat: add thing"
-    )
-
-
-def test_sanitize_commit_message_extracts_json_string() -> None:
-    assert (
-        sanitize_commit_message('"feat: add thing\\n\\nExplain why."')
-        == "feat: add thing\n\nExplain why."
-    )
-
-
-def test_sanitize_commit_message_removes_single_backtick_wrapping() -> None:
-    assert sanitize_commit_message("`feat: add thing`") == "feat: add thing"
-
-
-def test_sanitize_commit_message_removes_label_inside_wrapping() -> None:
-    assert (
-        sanitize_commit_message("`Commit message: feat: add thing`")
-        == "feat: add thing"
-    )
-
-
-def test_json_without_string_message_is_not_usable() -> None:
-    message = sanitize_commit_message('{"message": 123}')
-
-    assert not is_usable_commit_message(message)
+from cmtr.message import is_usable_commit_message
 
 
 def test_bracket_prefixed_subject_is_usable() -> None:
     assert is_usable_commit_message("[docs] update README")
-
-
-def test_json_array_output_is_not_usable() -> None:
-    assert not is_usable_commit_message('["feat: add thing"]')
 
 
 def test_comment_only_message_is_not_usable() -> None:
@@ -220,6 +45,11 @@ def test_bullet_list_subject_is_not_usable() -> None:
 def test_unclosed_fence_subject_is_not_usable() -> None:
     assert not is_usable_commit_message("```gitcommit\nfeat: add thing")
     assert not is_usable_commit_message("```gitcommit")
+
+
+def test_json_like_subject_is_not_usable() -> None:
+    assert not is_usable_commit_message('{"message": "feat: add thing"}')
+    assert not is_usable_commit_message('["feat: add thing"]')
 
 
 def test_context_leak_message_is_not_usable() -> None:

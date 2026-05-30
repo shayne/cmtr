@@ -10,7 +10,7 @@ import tempfile
 
 from .config import DEFAULT_CONFIG
 from .errors import CodexError
-from .message import is_usable_commit_message, sanitize_commit_message
+from .message import is_usable_commit_message
 
 
 @dataclass(frozen=True)
@@ -156,7 +156,7 @@ def generate_commit_message_with_codex(
             except OSError:
                 pass
 
-    message = sanitize_commit_message(_extract_message(output_raw))
+    message = _extract_message(output_raw)
     if not is_usable_commit_message(message):
         raise CodexError("Codex output contained no usable commit message.")
     return message
