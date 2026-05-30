@@ -13,6 +13,13 @@ def test_sanitize_commit_message_removes_inline_label() -> None:
     )
 
 
+def test_sanitize_commit_message_removes_suggested_label() -> None:
+    assert (
+        sanitize_commit_message("Suggested commit message: feat: add thing")
+        == "feat: add thing"
+    )
+
+
 def test_sanitize_commit_message_removes_subject_and_body_labels() -> None:
     assert (
         sanitize_commit_message("Subject: feat: add thing\n\nBody:\nExplain why.")

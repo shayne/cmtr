@@ -4,7 +4,13 @@ import json
 import re
 
 
-_LABEL_PREFIXES = ("commit message:", "message:", "subject:")
+_LABEL_PREFIXES = (
+    "commit message:",
+    "suggested commit message:",
+    "proposed commit message:",
+    "message:",
+    "subject:",
+)
 _BODY_LABELS = {"body:", "description:"}
 _PLACEHOLDER_SUBJECTS = {"todo", "tbd", "wip", "commit message"}
 _LEAK_PREFIXES = (
