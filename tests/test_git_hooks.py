@@ -1,9 +1,12 @@
 from pathlib import Path
+import os
 import subprocess
 
 from cmtr.git import (
+    GitError,
     HooksPathEntry,
     get_hooks_dir,
+    has_unstaged_changes,
     _select_log_paths,
     gather_log_context,
     parse_hooks_path_entries,
@@ -49,6 +52,27 @@ def test_get_hooks_dir_resolves_default_path_under_repo_root(tmp_path: Path) -> 
     hooks_dir = get_hooks_dir(tmp_path)
 
     assert hooks_dir == tmp_path / ".git" / "hooks"
+
+
+def test_has_unstaged_changes_reports_non_utf8_git_error(
+    tmp_path: Path, monkeypatch
+) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_git = fake_bin / "git"
+    fake_git.write_text(
+        "#!/bin/sh\nprintf '\\377' >&2\nexit 2\n",
+        encoding="utf-8",
+    )
+    fake_git.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+
+    try:
+        has_unstaged_changes(tmp_path, ["file.txt"])
+    except GitError as exc:
+        assert "\ufffd" in str(exc)
+    else:
+        raise AssertionError("expected GitError")
 
 
 def test_select_log_paths_honors_max_paths_for_unrelated_files() -> None:
