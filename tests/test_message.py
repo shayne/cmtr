@@ -60,6 +60,10 @@ def test_sanitize_commit_message_removes_inline_assistant_preamble() -> None:
     )
 
 
+def test_sanitize_commit_message_removes_inline_recommendation_preamble() -> None:
+    assert sanitize_commit_message("I would use: feat: add thing") == "feat: add thing"
+
+
 def test_sanitize_commit_message_removes_preamble_then_fence() -> None:
     assert (
         sanitize_commit_message(
