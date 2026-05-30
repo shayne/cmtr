@@ -197,6 +197,17 @@ def test_prepare_commit_msg_skips_message_source_before_auth(
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "missing-codex-home"))
 
+    class FailStatusLine:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            raise AssertionError("status should not start")
+
+        def __exit__(self, exc_type, exc, exc_tb):
+            return False
+
+    monkeypatch.setattr(cli, "StatusLine", FailStatusLine)
     runner = CliRunner()
     result = runner.invoke(
         cli.app,
@@ -205,6 +216,8 @@ def test_prepare_commit_msg_skips_message_source_before_auth(
 
     assert result.exit_code == 0
     assert message_path.read_text(encoding="utf-8") == "Manual subject\n"
+    assert "Generating commit message" not in result.output
+    assert "Generating commit message" not in result.stderr
 
 
 def test_main_passes_configured_model_to_codex(tmp_path: Path, monkeypatch) -> None:
