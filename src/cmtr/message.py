@@ -30,7 +30,7 @@ _INLINE_ASSISTANT_PREAMBLE_RE = re.compile(
     r"^(?:sure,?\s+)?(?:here(?:\s+is|'s)\s+the\s+commit\s+message|"
     r"here\s+you\s+go|here's\s+my\s+suggestion|"
     r"the\s+commit\s+message\s+is|i(?:\s+would|'d)\s+use|"
-    r"i(?:\s+would|'d)?\s+suggest)\s*:\s*(?P<message>.+)$",
+    r"i(?:\s+would|'d)?\s+(?:suggest|recommend))\s*:\s*(?P<message>.+)$",
     re.I,
 )
 
@@ -194,6 +194,7 @@ def _is_assistant_preamble(line: str) -> bool:
         "i'd suggest",
         "i would suggest",
         "i suggest",
+        "i recommend",
     }:
         return True
     if "commit message" not in text:
