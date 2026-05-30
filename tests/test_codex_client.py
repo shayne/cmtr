@@ -138,6 +138,34 @@ def test_codex_reports_undecodable_output_file(tmp_path: Path, monkeypatch) -> N
         )
 
 
+def test_codex_reports_non_utf8_failure_output(tmp_path: Path, monkeypatch) -> None:
+    fake_codex = tmp_path / "codex"
+    fake_codex.write_text(
+        "#!/bin/sh\nprintf '\\377' >&2\nexit 1\n",
+        encoding="utf-8",
+    )
+    fake_codex.chmod(0o755)
+    monkeypatch.setattr(
+        codex_client,
+        "codex_status",
+        lambda: codex_client.CodexStatus(
+            codex_path=fake_codex,
+            npx_path=None,
+            auth_path=tmp_path / "auth.json",
+            auth_exists=True,
+        ),
+    )
+
+    with pytest.raises(CodexError, match="Codex exec failed"):
+        codex_client.generate_commit_message_with_codex(
+            repo_root=tmp_path,
+            system_prompt="system",
+            user_prompt="user",
+            model="gpt-test",
+            api_key=None,
+        )
+
+
 def test_codex_allows_scratch_directory_outside_git_repo(
     tmp_path: Path, monkeypatch
 ) -> None:

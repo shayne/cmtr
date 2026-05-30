@@ -123,6 +123,8 @@ def generate_commit_message_with_codex(
                 cwd=workdir,
                 input=prompt,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 capture_output=True,
                 env=env,
                 timeout=timeout_seconds,
@@ -131,8 +133,9 @@ def generate_commit_message_with_codex(
         if result.returncode != 0:
             stderr = result.stderr.strip()
             stdout = result.stdout.strip()
-            message = stderr or stdout or "Codex exec failed"
-            raise CodexError(message)
+            message = stderr or stdout
+            suffix = f": {message}" if message else ""
+            raise CodexError(f"Codex exec failed{suffix}")
 
         try:
             output_raw = output_path.read_text(encoding="utf-8")
