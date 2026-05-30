@@ -187,6 +187,19 @@ def test_hook_only_options_are_rejected_for_commit_mode(
     assert "generation should not start" not in result.output
 
 
+@pytest.mark.parametrize("flag", ["--force", "--global"])
+def test_hook_only_options_are_rejected_before_git_repo_check(
+    tmp_path: Path, monkeypatch, flag: str
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(cli.app, [flag])
+
+    assert result.exit_code == 1
+    assert f"{flag} can only be used with --hook or --uninstall-hook" in result.output
+    assert "not a git repository" not in result.output
+
+
 def test_prepare_commit_msg_skips_message_source_before_auth(
     tmp_path: Path, monkeypatch
 ) -> None:

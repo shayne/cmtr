@@ -239,6 +239,8 @@ def main(
     try:
         if hook and uninstall:
             raise UserError("--hook and --uninstall-hook cannot be used together.")
+        if not hook and not uninstall:
+            _reject_hook_only_options(force=force, use_global_hooks=use_global_hooks)
         invocation_cwd = Path.cwd()
         repo_root = resolve_repo_root(invocation_cwd)
         if hook:
@@ -289,7 +291,6 @@ def main(
             hook_path = uninstall_hook(repo_root, use_global=use_global_hooks)
             console.print(f"Hook removed from {hook_path}")
             return
-        _reject_hook_only_options(force=force, use_global_hooks=use_global_hooks)
         extra_args = _filtered_git_args(ctx.args)
         pathspecs = _pathspecs_from_git_args(extra_args)
         if pathspecs is not None:
