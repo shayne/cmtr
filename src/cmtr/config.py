@@ -215,6 +215,8 @@ def _coerce_value(key: str, value: Any) -> Any:
             raise ConfigError(f"{key} must be greater than or equal to 0")
         return number
     if key == "timeout_seconds":
+        if isinstance(value, bool):
+            raise ConfigError("timeout_seconds must be a number")
         try:
             number = float(value)
         except (TypeError, ValueError) as exc:

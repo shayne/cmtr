@@ -131,6 +131,13 @@ def test_load_config_rejects_float_integer_limits(tmp_path: Path, key: str) -> N
         load_config(tmp_path)
 
 
+def test_load_config_rejects_boolean_timeout(tmp_path: Path) -> None:
+    (tmp_path / "cmtr.toml").write_text("timeout_seconds = true\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="timeout_seconds must be a number"):
+        load_config(tmp_path)
+
+
 @pytest.mark.parametrize("key", ["model", "codex_model"])
 def test_load_config_rejects_empty_model_names(tmp_path: Path, key: str) -> None:
     (tmp_path / "cmtr.toml").write_text(f'{key} = "  "\n', encoding="utf-8")
