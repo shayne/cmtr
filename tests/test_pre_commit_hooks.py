@@ -6,6 +6,7 @@ import pytest
 from cmtr.errors import UserError
 from cmtr.config import DEFAULT_CONFIG
 from cmtr.hook import (
+    HOOK_MARKER,
     PRE_COMMIT_INLINE_ENTRY,
     PRE_COMMIT_SCRIPT_ENTRY,
     append_failure_comment,
@@ -315,6 +316,37 @@ def test_uninstall_hook_treats_undecodable_existing_hook_as_other(
     hook_path.write_bytes(b"\xff\xfe\n")
 
     with pytest.raises(UserError, match="prepare-commit-msg hook was not installed"):
+        uninstall_hook(tmp_path)
+
+
+def test_install_hook_reports_write_failure(tmp_path: Path, monkeypatch) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    original_write_text = Path.write_text
+
+    def fail_hook_write(self, *args, **kwargs):
+        if self.name == "prepare-commit-msg":
+            raise OSError("permission denied")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_hook_write)
+
+    with pytest.raises(UserError, match="Failed to write hook"):
+        install_hook(tmp_path, force=False)
+
+
+def test_uninstall_hook_reports_remove_failure(tmp_path: Path, monkeypatch) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    hook_path = tmp_path / ".git" / "hooks" / "prepare-commit-msg"
+    hook_path.write_text(f"#!/bin/sh\n{HOOK_MARKER}\n", encoding="utf-8")
+
+    def fail_hook_unlink(self):
+        if self == hook_path:
+            raise OSError("permission denied")
+        return None
+
+    monkeypatch.setattr(Path, "unlink", fail_hook_unlink)
+
+    with pytest.raises(UserError, match="Failed to remove hook"):
         uninstall_hook(tmp_path)
 
 

@@ -35,7 +35,6 @@ def install_hook(repo_root: Path, force: bool, *, use_global: bool = False) -> P
             raise UserError("pre-commit config detected; --global is not supported.")
         return install_pre_commit_hook(repo_root, pre_commit_config, force=force)
     hooks_dir = get_hooks_dir(repo_root, use_global=use_global)
-    hooks_dir.mkdir(parents=True, exist_ok=True)
     hook_path = hooks_dir / "prepare-commit-msg"
     if hook_path.exists() and not _is_our_hook(hook_path):
         if not force:
@@ -43,8 +42,7 @@ def install_hook(repo_root: Path, force: bool, *, use_global: bool = False) -> P
                 "prepare-commit-msg hook already exists. Use --force to overwrite."
             )
     local_checkout = _detect_local_checkout()
-    hook_path.write_text(_hook_script_for(local_checkout), encoding="utf-8")
-    hook_path.chmod(0o755)
+    _write_hook_file(hook_path, _hook_script_for(local_checkout))
     return hook_path
 
 
@@ -60,7 +58,10 @@ def uninstall_hook(repo_root: Path, *, use_global: bool = False) -> Path:
         raise UserError("No prepare-commit-msg hook found.")
     if not _is_our_hook(hook_path):
         raise UserError("prepare-commit-msg hook was not installed by cmtr.")
-    hook_path.unlink()
+    try:
+        hook_path.unlink()
+    except OSError as exc:
+        raise UserError(f"Failed to remove hook {hook_path}: {exc}") from exc
     return hook_path
 
 
@@ -164,6 +165,15 @@ def _is_our_hook(path: Path) -> bool:
     except OSError:
         return False
     return HOOK_MARKER in contents
+
+
+def _write_hook_file(path: Path, contents: str) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents, encoding="utf-8")
+        path.chmod(0o755)
+    except OSError as exc:
+        raise UserError(f"Failed to write hook {path}: {exc}") from exc
 
 
 def install_pre_commit_hook(repo_root: Path, config_path: Path, *, force: bool) -> Path:
