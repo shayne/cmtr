@@ -35,10 +35,7 @@ def sanitize_commit_message(message: str) -> str:
     text = _extract_json_message(text)
     text = _strip_label(text)
     text = _strip_body_labels(text)
-    if text.startswith('"') and text.endswith('"') and len(text) > 1:
-        text = text[1:-1].strip()
-    if text.startswith("'") and text.endswith("'") and len(text) > 1:
-        text = text[1:-1].strip()
+    text = _strip_wrapping_markers(text)
     return text
 
 
@@ -133,6 +130,15 @@ def _strip_body_labels(text: str) -> str:
     lines = text.splitlines()
     cleaned = [line for line in lines if line.strip().lower() not in _BODY_LABELS]
     return "\n".join(cleaned).strip()
+
+
+def _strip_wrapping_markers(text: str) -> str:
+    if len(text) <= 1:
+        return text
+    for marker in ('"', "'", "`"):
+        if text.startswith(marker) and text.endswith(marker):
+            return text[1:-1].strip()
+    return text
 
 
 def _strip_assistant_preamble(text: str) -> str:

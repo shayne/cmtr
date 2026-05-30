@@ -68,6 +68,10 @@ def test_sanitize_commit_message_extracts_json_string() -> None:
     )
 
 
+def test_sanitize_commit_message_removes_single_backtick_wrapping() -> None:
+    assert sanitize_commit_message("`feat: add thing`") == "feat: add thing"
+
+
 def test_json_without_string_message_is_not_usable() -> None:
     message = sanitize_commit_message('{"message": 123}')
 
