@@ -116,7 +116,7 @@ def _write_message(path: Path, message: str) -> None:
 def _write_message_prepend(path: Path, message: str) -> None:
     existing = ""
     if path.exists():
-        existing = path.read_text(encoding="utf-8")
+        existing = path.read_text(encoding="utf-8", errors="replace")
     message_text = message.strip()
     if existing:
         text = f"{message_text}\n\n{existing}"
@@ -133,7 +133,7 @@ def append_failure_comment(path: Path, error: str, *, comment_char: str = "#") -
     comment = "\n".join(comment_lines) + "\n"
     existing = ""
     if path.exists():
-        existing = path.read_text(encoding="utf-8")
+        existing = path.read_text(encoding="utf-8", errors="replace")
     if existing and not existing.endswith("\n"):
         existing += "\n"
     path.write_text(
@@ -614,7 +614,7 @@ def _message_lines_before_scissors(
     message_path: Path,
     comment_char: str,
 ) -> list[str]:
-    lines = message_path.read_text(encoding="utf-8").splitlines()
+    lines = message_path.read_text(encoding="utf-8", errors="replace").splitlines()
     for index, line in enumerate(lines):
         if _is_scissors_line(line, comment_char):
             return lines[:index]

@@ -463,6 +463,38 @@ index df967b9..5ea2ed4 100644
     assert message_path.read_text(encoding="utf-8").startswith("feat: generated\n\n")
 
 
+def test_prepare_commit_msg_ignores_invalid_utf8_below_scissors(
+    tmp_path: Path, monkeypatch
+) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    message_path = tmp_path / "COMMIT_EDITMSG"
+    message_path.write_bytes(
+        b"# Please enter the commit message for your changes.\n"
+        b"# ------------------------ >8 ------------------------\n"
+        b"diff --git a/file.txt b/file.txt\n"
+        b"+\xff\xfe\n"
+    )
+
+    monkeypatch.setattr(
+        "cmtr.hook.generate_message",
+        lambda repo_root, config, api_key: "feat: generated",
+    )
+
+    exit_code = run_prepare_commit_msg(
+        message_path=message_path,
+        source=None,
+        sha=None,
+        repo_root=tmp_path,
+        config=DEFAULT_CONFIG,
+        api_key=None,
+    )
+
+    assert exit_code == 0
+    assert message_path.read_text(encoding="utf-8", errors="replace").startswith(
+        "feat: generated\n\n"
+    )
+
+
 def test_prepare_commit_msg_respects_configured_comment_char(
     tmp_path: Path, monkeypatch
 ) -> None:
