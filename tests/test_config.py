@@ -60,6 +60,13 @@ def test_load_config_rejects_unknown_repo_keys(tmp_path: Path) -> None:
         load_config(tmp_path)
 
 
+def test_load_config_reports_malformed_repo_config(tmp_path: Path) -> None:
+    (tmp_path / "cmtr.toml").write_text('model = "unterminated\n', encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="Failed to parse"):
+        load_config(tmp_path)
+
+
 @pytest.mark.parametrize(
     "key,value",
     [
@@ -214,6 +221,21 @@ def test_config_get_rejects_invalid_global_config(tmp_path: Path, monkeypatch) -
 
     assert result.exit_code == 1
     assert "prefer_codex must be a boolean" in result.output
+
+
+def test_config_list_reports_malformed_global_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    config_path = tmp_path / "xdg" / "cmtr" / "config.toml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text('model = "unterminated\n', encoding="utf-8")
+
+    result = CliRunner().invoke(cli.app, ["config", "list"])
+
+    assert result.exit_code == 1
+    assert "cmtr error: Failed to parse" in result.output
+    assert "TOMLDecodeError" not in result.output
 
 
 def test_write_global_config_escapes_multiline_strings(

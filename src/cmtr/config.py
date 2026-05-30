@@ -109,6 +109,8 @@ def _read_cmtr_toml(path: Path) -> dict[str, Any]:
         contents = tomllib.loads(path.read_text(encoding="utf-8"))
     except OSError as exc:
         raise ConfigError(f"Failed to read {path}: {exc}") from exc
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"Failed to parse {path}: {exc}") from exc
     if not isinstance(contents, dict):
         raise ConfigError("cmtr.toml must be a table")
     return contents
@@ -122,6 +124,8 @@ def _read_global_config() -> dict[str, Any]:
         contents = tomllib.loads(path.read_text(encoding="utf-8"))
     except OSError as exc:
         raise ConfigError(f"Failed to read {path}: {exc}") from exc
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"Failed to parse {path}: {exc}") from exc
     if not isinstance(contents, dict):
         raise ConfigError("config.toml must be a table")
     return contents
