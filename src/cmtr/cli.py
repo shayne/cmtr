@@ -614,6 +614,10 @@ def _normalize_pathspec_for_repo(
     if magic is not None:
         magic_prefix, payload, is_top_relative = magic
         if is_top_relative or not payload:
+            if payload:
+                _normalize_plain_pathspec_for_repo(
+                    payload, prefix="", repo_root=repo_root
+                )
             return pathspec
         return magic_prefix + _normalize_plain_pathspec_for_repo(
             payload, prefix=prefix, repo_root=repo_root

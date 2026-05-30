@@ -918,6 +918,27 @@ def test_cli_rejects_relative_pathspec_above_repo(tmp_path: Path, monkeypatch) -
     assert "generation should not start" not in result.output
 
 
+@pytest.mark.parametrize("pathspec", [":/../outside", ":(top)../outside"])
+def test_cli_rejects_top_magic_pathspec_above_repo(
+    tmp_path: Path, monkeypatch, pathspec: str
+) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "file.txt").write_text("hello\n", encoding="utf-8")
+    subprocess.run(["git", "add", "file.txt"], cwd=tmp_path, check=True)
+    monkeypatch.chdir(tmp_path)
+
+    def fail_collect_context(*args, **kwargs):
+        raise AssertionError("generation should not start")
+
+    monkeypatch.setattr(cli, "collect_context", fail_collect_context)
+
+    result = CliRunner().invoke(cli.app, ["--no-edit", "--", pathspec])
+
+    assert result.exit_code == 1
+    assert "outside the repository" in result.output
+    assert "generation should not start" not in result.output
+
+
 def test_cli_uses_shared_prompt_generation(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
     context = CommitContext(
