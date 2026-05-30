@@ -28,7 +28,9 @@ _DIFF_INDEX_RE = re.compile(r"^index [0-9a-f]+\.\.[0-9a-f]+(?: \d{6})?$", re.I)
 _LIST_SUBJECT_RE = re.compile(r"^(?:[-*]\s+|\d+[.)]\s+)")
 _INLINE_ASSISTANT_PREAMBLE_RE = re.compile(
     r"^(?:sure,?\s+)?(?:here(?:\s+is|'s)\s+the\s+commit\s+message|"
-    r"the\s+commit\s+message\s+is|i(?:\s+would|'d)\s+use)\s*:\s*(?P<message>.+)$",
+    r"here\s+you\s+go|here's\s+my\s+suggestion|"
+    r"the\s+commit\s+message\s+is|i(?:\s+would|'d)\s+use|"
+    r"i(?:\s+would|'d)\s+suggest)\s*:\s*(?P<message>.+)$",
     re.I,
 )
 

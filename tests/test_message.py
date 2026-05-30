@@ -75,6 +75,15 @@ def test_sanitize_commit_message_removes_recommendation_wrappers() -> None:
     )
 
 
+def test_sanitize_commit_message_removes_suggestion_wrappers() -> None:
+    assert sanitize_commit_message("Here you go: feat: add thing") == "feat: add thing"
+    assert (
+        sanitize_commit_message("Here's my suggestion: feat: add thing")
+        == "feat: add thing"
+    )
+    assert sanitize_commit_message("I'd suggest: feat: add thing") == "feat: add thing"
+
+
 def test_sanitize_commit_message_removes_preamble_then_fence() -> None:
     assert (
         sanitize_commit_message(
