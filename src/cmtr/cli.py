@@ -550,6 +550,11 @@ def _filtered_git_args(args: list[str]) -> list[str]:
             raise UserError("Pass pathspecs after -- so cmtr can analyze them.")
         if arg in forbidden_exact:
             raise UserError(error)
+        if any(
+            option.startswith("--") and arg.startswith(option + "=")
+            for option in forbidden_exact
+        ):
+            raise UserError(error)
         if arg in value_options:
             value_index = index + 1
             if (
