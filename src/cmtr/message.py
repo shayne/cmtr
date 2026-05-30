@@ -147,14 +147,21 @@ def _strip_body_labels(text: str) -> str:
         stripped = line.strip()
         lower = stripped.lower()
         if lower in _BODY_LABELS:
+            _ensure_body_separator(cleaned)
             continue
         for label in _BODY_LABELS:
             if lower.startswith(label + " "):
+                _ensure_body_separator(cleaned)
                 cleaned.append(stripped[len(label) :].strip())
                 break
         else:
             cleaned.append(line)
     return "\n".join(cleaned).strip()
+
+
+def _ensure_body_separator(lines: list[str]) -> None:
+    if lines and lines[-1].strip():
+        lines.append("")
 
 
 def _strip_wrapping_markers(text: str) -> str:

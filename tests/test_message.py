@@ -34,6 +34,20 @@ def test_sanitize_commit_message_removes_inline_body_label() -> None:
     )
 
 
+def test_sanitize_commit_message_inserts_separator_before_body_label() -> None:
+    assert (
+        sanitize_commit_message("Subject: feat: add thing\nBody:\nExplain why.")
+        == "feat: add thing\n\nExplain why."
+    )
+
+
+def test_sanitize_commit_message_inserts_separator_before_inline_body_label() -> None:
+    assert (
+        sanitize_commit_message("Subject: feat: add thing\nDescription: Explain why.")
+        == "feat: add thing\n\nExplain why."
+    )
+
+
 def test_sanitize_commit_message_removes_assistant_preamble() -> None:
     assert (
         sanitize_commit_message("Here is the commit message:\n\nfeat: add thing")
