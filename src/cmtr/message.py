@@ -8,6 +8,8 @@ _LABEL_PREFIXES = (
     "commit message:",
     "suggested commit message:",
     "proposed commit message:",
+    "recommended commit message:",
+    "use this commit message:",
     "message:",
     "subject:",
 )

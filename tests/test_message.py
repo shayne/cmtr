@@ -64,6 +64,17 @@ def test_sanitize_commit_message_removes_inline_recommendation_preamble() -> Non
     assert sanitize_commit_message("I would use: feat: add thing") == "feat: add thing"
 
 
+def test_sanitize_commit_message_removes_recommendation_wrappers() -> None:
+    assert (
+        sanitize_commit_message("Use this commit message: feat: add thing")
+        == "feat: add thing"
+    )
+    assert (
+        sanitize_commit_message("Recommended commit message: feat: add thing")
+        == "feat: add thing"
+    )
+
+
 def test_sanitize_commit_message_removes_preamble_then_fence() -> None:
     assert (
         sanitize_commit_message(
