@@ -138,9 +138,12 @@ def read_global_config() -> dict[str, Any]:
 
 def write_global_config(data: dict[str, Any]) -> None:
     path = global_config_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
     text = _serialize_toml(data)
-    path.write_text(text, encoding="utf-8")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise ConfigError(f"Failed to write {path}: {exc}") from exc
 
 
 def set_global_value(key: str, value: Any) -> None:

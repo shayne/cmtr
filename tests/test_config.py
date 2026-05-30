@@ -318,3 +318,14 @@ def test_config_unset_removes_unknown_existing_key(tmp_path: Path, monkeypatch) 
     text = config_path.read_text(encoding="utf-8")
     assert "modell" not in text
     assert 'model = "custom"' in text
+
+
+def test_config_set_reports_write_failure(tmp_path: Path, monkeypatch) -> None:
+    blocked_config_home = tmp_path / "xdg"
+    blocked_config_home.write_text("not a directory\n", encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(blocked_config_home))
+
+    result = CliRunner().invoke(cli.app, ["config", "set", "model", "custom"])
+
+    assert result.exit_code == 1
+    assert "cmtr error: Failed to write" in result.output
