@@ -439,6 +439,21 @@ def test_filtered_git_args_rejects_missing_safe_option_values(
         cli._filtered_git_args(args)
 
 
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--author", "--no-verify"],
+        ["--date", "--no-verify"],
+        ["--trailer", "--no-verify"],
+    ],
+)
+def test_filtered_git_args_rejects_long_option_as_safe_option_value(
+    args: list[str],
+) -> None:
+    with pytest.raises(UserError, match="requires a value"):
+        cli._filtered_git_args(args)
+
+
 def test_cli_rejects_message_flags_before_generation(
     tmp_path: Path, monkeypatch
 ) -> None:
