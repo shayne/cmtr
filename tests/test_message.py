@@ -96,6 +96,7 @@ def test_sanitize_commit_message_removes_suggestion_wrappers() -> None:
         == "feat: add thing"
     )
     assert sanitize_commit_message("I'd suggest: feat: add thing") == "feat: add thing"
+    assert sanitize_commit_message("I suggest: feat: add thing") == "feat: add thing"
 
 
 def test_sanitize_commit_message_removes_preamble_then_fence() -> None:
@@ -177,6 +178,7 @@ def test_bare_assistant_preamble_is_not_usable() -> None:
     assert not is_usable_commit_message("Here you go:")
     assert not is_usable_commit_message("Here's my suggestion:")
     assert not is_usable_commit_message("I'd suggest:")
+    assert not is_usable_commit_message("I suggest:")
 
 
 def test_bullet_list_subject_is_not_usable() -> None:
