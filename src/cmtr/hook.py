@@ -84,7 +84,10 @@ def run_prepare_commit_msg(
         _write_message_prepend(message_path, message)
         return 0
     except Exception as exc:
-        append_failure_comment_for_repo(message_path, str(exc), repo_root)
+        try:
+            append_failure_comment_for_repo(message_path, str(exc), repo_root)
+        except Exception:
+            pass
         return 0
 
 

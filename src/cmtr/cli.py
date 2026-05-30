@@ -425,10 +425,13 @@ def _append_prepare_failure_comment(
     error: str,
     repo_root: Path | None,
 ) -> None:
-    if repo_root is None:
-        append_failure_comment(message_path, error)
+    try:
+        if repo_root is None:
+            append_failure_comment(message_path, error)
+            return
+        append_failure_comment_for_repo(message_path, error, repo_root)
+    except Exception:
         return
-    append_failure_comment_for_repo(message_path, error, repo_root)
 
 
 def _run_pre_commit_install(repo_root: Path) -> None:

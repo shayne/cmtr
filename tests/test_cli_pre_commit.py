@@ -686,6 +686,55 @@ def test_prepare_commit_msg_reports_no_staged_changes_before_auth(
     assert "OPENAI_API_KEY is not set" not in message
 
 
+def test_prepare_commit_msg_exits_zero_when_generation_failure_comment_write_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _init_repo(tmp_path)
+    message_path = tmp_path / "COMMIT_EDITMSG"
+    message_path.write_text("", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    def fail_generate(*args, **kwargs):
+        raise UserError("backend failed")
+
+    monkeypatch.setattr("cmtr.hook.generate_message", fail_generate)
+    original_write_text = Path.write_text
+
+    def fail_message_write(self, *args, **kwargs):
+        if self == message_path:
+            raise OSError("permission denied")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_message_write)
+
+    result = CliRunner().invoke(cli.app, ["prepare-commit-msg", str(message_path)])
+
+    assert result.exit_code == 0
+
+
+def test_prepare_commit_msg_exits_zero_when_cli_failure_comment_write_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "cmtr.toml").write_text("timeout_seconds = 0\n", encoding="utf-8")
+    message_path = tmp_path / "COMMIT_EDITMSG"
+    message_path.write_text("", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    original_write_text = Path.write_text
+
+    def fail_message_write(self, *args, **kwargs):
+        if self == message_path:
+            raise OSError("permission denied")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_message_write)
+
+    result = CliRunner().invoke(cli.app, ["prepare-commit-msg", str(message_path)])
+
+    assert result.exit_code == 0
+    assert "cmtr error: timeout_seconds must be greater than 0" in result.output
+
+
 def test_run_git_commit_commits_message_in_real_repo(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     (tmp_path / "file.txt").write_text("hello\n", encoding="utf-8")
