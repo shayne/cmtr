@@ -622,9 +622,17 @@ def _normalize_plain_pathspec_for_repo(
         except ValueError:
             raise UserError(f"Pathspec is outside the repository: {pathspec}") from None
     if not prefix:
+        if _is_relative_path_outside_repo(posixpath.normpath(pathspec)):
+            raise UserError(f"Pathspec is outside the repository: {pathspec}")
         return pathspec
     normalized = posixpath.normpath(posixpath.join(prefix, pathspec))
+    if _is_relative_path_outside_repo(normalized):
+        raise UserError(f"Pathspec is outside the repository: {pathspec}")
     return normalized
+
+
+def _is_relative_path_outside_repo(path: str) -> bool:
+    return path == ".." or path.startswith("../")
 
 
 def _split_git_magic_pathspec(pathspec: str) -> tuple[str, str, bool] | None:

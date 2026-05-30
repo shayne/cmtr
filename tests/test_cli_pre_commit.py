@@ -862,6 +862,30 @@ def test_cli_rejects_absolute_pathspec_outside_repo(
     assert "generation should not start" not in result.output
 
 
+def test_cli_rejects_relative_pathspec_above_repo(tmp_path: Path, monkeypatch) -> None:
+    _init_repo(tmp_path)
+    subdir = tmp_path / "sub"
+    subdir.mkdir()
+    (tmp_path / "file.txt").write_text("hello\n", encoding="utf-8")
+    subprocess.run(["git", "add", "file.txt"], cwd=tmp_path, check=True)
+    monkeypatch.chdir(subdir)
+
+    def fail_generate_message_from_prompts(**kwargs):
+        raise AssertionError("generation should not start")
+
+    monkeypatch.setattr(
+        cli,
+        "generate_message_from_prompts",
+        fail_generate_message_from_prompts,
+    )
+
+    result = CliRunner().invoke(cli.app, ["--no-edit", "--", "../.."])
+
+    assert result.exit_code == 1
+    assert "outside the repository" in result.output
+    assert "generation should not start" not in result.output
+
+
 def test_cli_uses_shared_prompt_generation(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
     context = CommitContext(
