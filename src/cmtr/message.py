@@ -180,7 +180,14 @@ def _strip_assistant_preamble(text: str) -> str:
 
 
 def _is_assistant_preamble(line: str) -> bool:
-    text = line.strip().lower()
+    text = line.strip().lower().rstrip(":")
+    if text in {
+        "here you go",
+        "here's my suggestion",
+        "i'd suggest",
+        "i would suggest",
+    }:
+        return True
     if "commit message" not in text:
         return False
     return text.startswith(("here is", "here's", "sure", "the commit message"))

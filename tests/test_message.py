@@ -160,6 +160,9 @@ def test_placeholder_message_is_not_usable() -> None:
 
 def test_bare_assistant_preamble_is_not_usable() -> None:
     assert not is_usable_commit_message("Here is the commit message:")
+    assert not is_usable_commit_message("Here you go:")
+    assert not is_usable_commit_message("Here's my suggestion:")
+    assert not is_usable_commit_message("I'd suggest:")
 
 
 def test_bullet_list_subject_is_not_usable() -> None:
