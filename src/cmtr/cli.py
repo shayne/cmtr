@@ -745,9 +745,6 @@ def config_get(key: str) -> None:
     try:
         if key not in CONFIG_KEYS:
             raise typer.BadParameter(f"Unknown key: {key}")
-        data = read_global_config()
-        if key not in data:
-            raise typer.Exit(code=1)
         config = load_global_config()
         typer.echo(_format_config_value(config.__dict__[key]))
     except CmtrError as exc:

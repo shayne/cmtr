@@ -190,6 +190,15 @@ def test_config_get_formats_booleans_like_config_values(
     assert result.stdout.strip() == "false"
 
 
+def test_config_get_shows_default_value_when_unset(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    result = CliRunner().invoke(cli.app, ["config", "get", "model"])
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "gpt-5.5"
+
+
 def test_config_get_rejects_invalid_global_config(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     config_path = tmp_path / "xdg" / "cmtr" / "config.toml"
