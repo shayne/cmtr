@@ -72,6 +72,14 @@ def test_sanitize_commit_message_removes_inline_assistant_preamble() -> None:
         sanitize_commit_message("Sure, here's the commit message: feat: add thing")
         == "feat: add thing"
     )
+    assert (
+        sanitize_commit_message("The commit message would be: feat: add thing")
+        == "feat: add thing"
+    )
+    assert (
+        sanitize_commit_message("The commit message should be: feat: add thing")
+        == "feat: add thing"
+    )
 
 
 def test_sanitize_commit_message_removes_inline_recommendation_preamble() -> None:
@@ -195,6 +203,8 @@ def test_placeholder_message_is_not_usable() -> None:
 
 def test_bare_assistant_preamble_is_not_usable() -> None:
     assert not is_usable_commit_message("Here is the commit message:")
+    assert not is_usable_commit_message("The commit message would be:")
+    assert not is_usable_commit_message("The commit message should be:")
     assert not is_usable_commit_message("Here you go:")
     assert not is_usable_commit_message("Here's my suggestion:")
     assert not is_usable_commit_message("I'd suggest:")
