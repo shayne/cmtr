@@ -131,7 +131,18 @@ def _is_json_like_subject(subject: str) -> bool:
 
 def _strip_body_labels(text: str) -> str:
     lines = text.splitlines()
-    cleaned = [line for line in lines if line.strip().lower() not in _BODY_LABELS]
+    cleaned = []
+    for line in lines:
+        stripped = line.strip()
+        lower = stripped.lower()
+        if lower in _BODY_LABELS:
+            continue
+        for label in _BODY_LABELS:
+            if lower.startswith(label + " "):
+                cleaned.append(stripped[len(label) :].strip())
+                break
+        else:
+            cleaned.append(line)
     return "\n".join(cleaned).strip()
 
 

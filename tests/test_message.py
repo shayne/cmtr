@@ -20,6 +20,13 @@ def test_sanitize_commit_message_removes_subject_and_body_labels() -> None:
     )
 
 
+def test_sanitize_commit_message_removes_inline_body_label() -> None:
+    assert (
+        sanitize_commit_message("Subject: feat: add thing\n\nBody: Explain why.")
+        == "feat: add thing\n\nExplain why."
+    )
+
+
 def test_sanitize_commit_message_removes_assistant_preamble() -> None:
     assert (
         sanitize_commit_message("Here is the commit message:\n\nfeat: add thing")
