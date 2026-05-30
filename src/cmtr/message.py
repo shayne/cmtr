@@ -36,6 +36,9 @@ def sanitize_commit_message(message: str) -> str:
     text = _strip_label(text)
     text = _strip_body_labels(text)
     text = _strip_wrapping_markers(text)
+    text = _strip_label(text)
+    text = _strip_assistant_preamble(text)
+    text = _strip_body_labels(text)
     return text
 
 
