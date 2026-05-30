@@ -174,3 +174,26 @@ def test_openai_rejects_incomplete_response_even_with_text(monkeypatch) -> None:
             system_prompt="system",
             user_prompt="user",
         )
+
+
+def test_openai_failed_response_includes_error_message(monkeypatch) -> None:
+    class FakeResponses:
+        def create(self, **kwargs):
+            return {
+                "status": "failed",
+                "error": {"message": "model not found"},
+            }
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs) -> None:
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr(openai_client, "OpenAI", FakeOpenAI)
+
+    with pytest.raises(OpenAIError, match="failed.*model not found"):
+        openai_client.generate_commit_message(
+            config=DEFAULT_CONFIG,
+            api_key="test",
+            system_prompt="system",
+            user_prompt="user",
+        )

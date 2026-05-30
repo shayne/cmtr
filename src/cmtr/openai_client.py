@@ -89,6 +89,9 @@ def _raise_for_incomplete_response(response: Any) -> None:
         return
     details = _response_field(response, "incomplete_details")
     reason = _response_field(details, "reason")
+    if not reason:
+        error = _response_field(response, "error")
+        reason = _response_field(error, "message") or _response_field(error, "code")
     suffix = f" ({reason})" if reason else ""
     raise OpenAIError(f"OpenAI response was {status}{suffix}")
 
