@@ -380,6 +380,7 @@ def test_filtered_git_args_rejects_attached_message_options(arg: str) -> None:
         ["-Sdeadbeef"],
         ["--author", "Test User <test@example.com>"],
         ["--date", "2026-05-30T12:00:00-04:00"],
+        ["--date", "-1 day"],
         ["--trailer", "Reviewed-by=Test User <test@example.com>"],
     ],
 )
@@ -393,7 +394,6 @@ def test_filtered_git_args_allows_safe_commit_options(args: list[str]) -> None:
         ["--author"],
         ["--date"],
         ["--trailer"],
-        ["--author", "--no-verify"],
         ["--date", "--"],
         ["--author="],
         ["--date="],

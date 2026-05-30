@@ -534,7 +534,7 @@ def _filtered_git_args(args: list[str]) -> list[str]:
             raise UserError(error)
         if arg in value_options:
             value_index = index + 1
-            if value_index >= len(args) or args[value_index].startswith("-"):
+            if value_index >= len(args) or args[value_index] == "--":
                 raise UserError(f"{arg} requires a value.")
             index += 2
             continue
