@@ -73,6 +73,14 @@ def test_pre_commit_hook_status_ignores_non_local_matching_hook_id(
     assert pre_commit_hook_status(config) == "missing"
 
 
+def test_pre_commit_hook_status_reports_invalid_utf8_config(tmp_path: Path) -> None:
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_bytes(b"\xff\xfe\n")
+
+    with pytest.raises(UserError, match="Failed to read pre-commit config"):
+        pre_commit_hook_status(config)
+
+
 def test_ensure_pre_commit_hook_appends_local_repo(tmp_path: Path) -> None:
     config = _write(
         tmp_path / ".pre-commit-config.yaml",

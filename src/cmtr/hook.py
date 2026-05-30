@@ -198,13 +198,13 @@ def uninstall_pre_commit_hook(repo_root: Path, config_path: Path) -> Path:
 
 
 def pre_commit_hook_status(config_path: Path) -> str:
-    contents = config_path.read_text(encoding="utf-8")
+    contents = _read_pre_commit_config(config_path)
     lines = contents.splitlines(keepends=True)
     return _pre_commit_hook_status(lines, config_path.parent)
 
 
 def ensure_pre_commit_hook(config_path: Path) -> bool:
-    contents = config_path.read_text(encoding="utf-8")
+    contents = _read_pre_commit_config(config_path)
     lines = contents.splitlines(keepends=True)
     if _pre_commit_has_hook_id(lines):
         return False
@@ -220,7 +220,7 @@ def ensure_pre_commit_hook(config_path: Path) -> bool:
 
 
 def remove_pre_commit_hook(config_path: Path) -> bool:
-    contents = config_path.read_text(encoding="utf-8")
+    contents = _read_pre_commit_config(config_path)
     lines = contents.splitlines(keepends=True)
     hook_block = _find_local_hook_block_by_id(lines, PRE_COMMIT_HOOK_ID)
     if hook_block is None:
@@ -234,6 +234,15 @@ def remove_pre_commit_hook(config_path: Path) -> bool:
         text += newline
     config_path.write_text(text, encoding="utf-8")
     return True
+
+
+def _read_pre_commit_config(config_path: Path) -> str:
+    try:
+        return config_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise UserError(
+            f"Failed to read pre-commit config {config_path}: {exc}"
+        ) from exc
 
 
 def _insert_pre_commit_hook(lines: list[str], newline: str) -> list[str]:
