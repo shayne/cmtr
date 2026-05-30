@@ -197,6 +197,14 @@ def _is_assistant_preamble(line: str) -> bool:
         "i recommend",
     }:
         return True
+    if text.startswith(
+        (
+            "i recommend the following commit message",
+            "i would recommend the following commit message",
+            "i'd recommend the following commit message",
+        )
+    ):
+        return True
     if "commit message" not in text:
         return False
     return text.startswith(("here is", "here's", "sure", "the commit message"))
