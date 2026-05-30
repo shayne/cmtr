@@ -68,6 +68,12 @@ def test_sanitize_commit_message_extracts_json_message() -> None:
     )
 
 
+def test_sanitize_commit_message_extracts_inline_code_wrapped_json_message() -> None:
+    assert (
+        sanitize_commit_message('`{"message": "feat: add thing"}`') == "feat: add thing"
+    )
+
+
 def test_sanitize_commit_message_extracts_json_string() -> None:
     assert (
         sanitize_commit_message('"feat: add thing\\n\\nExplain why."')
