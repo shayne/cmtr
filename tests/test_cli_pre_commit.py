@@ -338,6 +338,7 @@ def test_main_falls_back_to_openai_when_codex_generation_fails(
         "--dry-run",
         "--edit",
         "-e",
+        "-es",
         "--no-edit",
         "--short",
         "--porcelain",
