@@ -624,7 +624,7 @@ def _normalize_plain_pathspec_for_repo(
     if not prefix:
         return pathspec
     normalized = posixpath.normpath(posixpath.join(prefix, pathspec))
-    return pathspec if normalized == "." else normalized
+    return normalized
 
 
 def _split_git_magic_pathspec(pathspec: str) -> tuple[str, str, bool] | None:

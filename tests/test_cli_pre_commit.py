@@ -758,6 +758,36 @@ def test_cli_pathspec_from_subdirectory_is_relative_to_invocation_cwd(
     assert "sub/file.txt" in files
 
 
+def test_cli_parent_pathspec_from_subdirectory_targets_repo_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _init_repo(tmp_path)
+    subdir = tmp_path / "sub"
+    subdir.mkdir()
+    (tmp_path / "root.txt").write_text("root\n", encoding="utf-8")
+    (subdir / "file.txt").write_text("hello\n", encoding="utf-8")
+    subprocess.run(["git", "add", "root.txt", "sub/file.txt"], cwd=tmp_path, check=True)
+    monkeypatch.chdir(subdir)
+    monkeypatch.setattr(cli, "_get_api_key", lambda: "test-key")
+    monkeypatch.setattr(
+        cli,
+        "generate_message_from_prompts",
+        lambda **kwargs: "feat: add files",
+    )
+
+    result = CliRunner().invoke(cli.app, ["--no-edit", "--", ".."])
+
+    assert result.exit_code == 0
+    files = subprocess.run(
+        ["git", "show", "--name-only", "--pretty=format:", "HEAD"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert files == ["root.txt", "sub/file.txt"]
+
+
 def test_cli_magic_exclude_pathspec_from_subdirectory_matches_git(
     tmp_path: Path, monkeypatch
 ) -> None:
