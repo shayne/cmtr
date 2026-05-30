@@ -160,7 +160,7 @@ def _insert_comment_before_scissors(
 
 def _is_our_hook(path: Path) -> bool:
     try:
-        contents = path.read_text(encoding="utf-8")
+        contents = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
     return HOOK_MARKER in contents

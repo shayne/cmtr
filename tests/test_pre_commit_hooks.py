@@ -11,10 +11,12 @@ from cmtr.hook import (
     append_failure_comment,
     detect_pre_commit_config,
     ensure_pre_commit_hook,
+    install_hook,
     install_pre_commit_hook,
     pre_commit_hook_status,
     remove_pre_commit_hook,
     run_prepare_commit_msg,
+    uninstall_hook,
     uninstall_pre_commit_hook,
     _hook_script_for,
 )
@@ -255,6 +257,28 @@ def test_install_pre_commit_hook_requires_force_for_other(
     monkeypatch.setattr("shutil.which", lambda _: "/usr/local/bin/uvx")
     with pytest.raises(UserError):
         install_pre_commit_hook(tmp_path, config, force=False)
+
+
+def test_install_hook_treats_undecodable_existing_hook_as_other(
+    tmp_path: Path,
+) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    hook_path = tmp_path / ".git" / "hooks" / "prepare-commit-msg"
+    hook_path.write_bytes(b"\xff\xfe\n")
+
+    with pytest.raises(UserError, match="prepare-commit-msg hook already exists"):
+        install_hook(tmp_path, force=False)
+
+
+def test_uninstall_hook_treats_undecodable_existing_hook_as_other(
+    tmp_path: Path,
+) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    hook_path = tmp_path / ".git" / "hooks" / "prepare-commit-msg"
+    hook_path.write_bytes(b"\xff\xfe\n")
+
+    with pytest.raises(UserError, match="prepare-commit-msg hook was not installed"):
+        uninstall_hook(tmp_path)
 
 
 def test_local_checkout_hook_preserves_target_repo_cwd(tmp_path: Path) -> None:
