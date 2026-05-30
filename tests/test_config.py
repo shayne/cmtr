@@ -67,6 +67,13 @@ def test_load_config_reports_malformed_repo_config(tmp_path: Path) -> None:
         load_config(tmp_path)
 
 
+def test_load_config_reports_invalid_utf8_repo_config(tmp_path: Path) -> None:
+    (tmp_path / "cmtr.toml").write_bytes(b"\xff\xfe\n")
+
+    with pytest.raises(ConfigError, match="Failed to read"):
+        load_config(tmp_path)
+
+
 @pytest.mark.parametrize(
     "key,value",
     [

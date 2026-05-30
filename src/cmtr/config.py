@@ -108,7 +108,7 @@ def global_config_path() -> Path:
 def _read_cmtr_toml(path: Path) -> dict[str, Any]:
     try:
         contents = tomllib.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise ConfigError(f"Failed to read {path}: {exc}") from exc
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"Failed to parse {path}: {exc}") from exc
@@ -123,7 +123,7 @@ def _read_global_config() -> dict[str, Any]:
         return {}
     try:
         contents = tomllib.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise ConfigError(f"Failed to read {path}: {exc}") from exc
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"Failed to parse {path}: {exc}") from exc
