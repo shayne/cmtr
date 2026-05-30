@@ -620,7 +620,7 @@ def _normalize_plain_pathspec_for_repo(
                 .as_posix()
             )
         except ValueError:
-            return pathspec
+            raise UserError(f"Pathspec is outside the repository: {pathspec}") from None
     if not prefix:
         return pathspec
     normalized = posixpath.normpath(posixpath.join(prefix, pathspec))

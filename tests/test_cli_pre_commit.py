@@ -806,6 +806,32 @@ def test_cli_magic_exclude_pathspec_from_subdirectory_matches_git(
     assert staged_files == ["sub/skip.txt"]
 
 
+def test_cli_rejects_absolute_pathspec_outside_repo(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _init_repo(tmp_path)
+    outside = tmp_path.parent / "outside.txt"
+    outside.write_text("outside\n", encoding="utf-8")
+    (tmp_path / "file.txt").write_text("hello\n", encoding="utf-8")
+    subprocess.run(["git", "add", "file.txt"], cwd=tmp_path, check=True)
+    monkeypatch.chdir(tmp_path)
+
+    def fail_generate_message_from_prompts(**kwargs):
+        raise AssertionError("generation should not start")
+
+    monkeypatch.setattr(
+        cli,
+        "generate_message_from_prompts",
+        fail_generate_message_from_prompts,
+    )
+
+    result = CliRunner().invoke(cli.app, ["--no-edit", "--", str(outside)])
+
+    assert result.exit_code == 1
+    assert "outside the repository" in result.output
+    assert "generation should not start" not in result.output
+
+
 def test_cli_uses_shared_prompt_generation(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
     context = CommitContext(
