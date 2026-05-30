@@ -36,6 +36,13 @@ jobs:
       - name: Type check
         run: uv run ty check
 
+      - name: CLI smoke checks
+        run: |
+          uv run cmtr --help
+          uv run cmtr auth status
+          uv run cmtr config get model
+          uv run cmtr --version
+
       - name: Build distributions
         run: uv build
 
